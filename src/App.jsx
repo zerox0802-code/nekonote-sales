@@ -466,7 +466,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
                 <span style={{fontWeight:700}}>👤 {st}給与</span>
                 <div style={{textAlign:"right"}}>
                   <span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
-                  <span style={{fontWeight:700,fontSize:16,color:"#c0392b"}}>{yen(salaries[st]||0)}</span>
+                  <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span>
                 </div>
               </div>
               <div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>
