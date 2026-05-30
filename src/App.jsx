@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { dbGet, dbSet } from "./firebase";
 
 const PASSWORD = "nekono2024";
-const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff" };
+const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff", monthcnt:"monthcnt" };
 const DEFAULT_STAFF = ["公文","広田","ねこのて"];
 const DEFAULT_PROPS = [
   {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
@@ -32,6 +32,33 @@ const yen = n => "¥"+Math.round(Number(n)||0).toLocaleString();
 const toDay = () => new Date().toISOString().slice(0,10);
 const toMonth = () => new Date().toISOString().slice(0,7);
 const nextMo = ym => { const [y,m]=ym.split("-").map(Number); return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`; };
+
+// 月ごとの物件月回数キー
+const mcKey = (month, pid) => `${month}-cnt-${pid}`;
+// 月ごとの担当回数キー
+const cdKey = (month, pid, st) => `${month}-${pid}-${st}`;
+
+// スタッフの売上計算：月額×(担当回数/月回数)、合計が月額に一致するよう最後で調整
+function calcStaffSales(fee, monthCnt, staffCounts, staffList) {
+  if (!monthCnt || monthCnt === 0) return staffList.map(() => 0);
+  const totalStaffCnt = staffList.reduce((s, st) => s + (staffCounts[st] || 0), 0);
+  if (totalStaffCnt === 0) return staffList.map(() => 0);
+
+  // 各スタッフの按分（切り捨て）
+  let sales = staffList.map(st => Math.floor(fee * (staffCounts[st] || 0) / monthCnt));
+  // 端数を最後の作業者に加算して合計=担当分の月額になるように調整
+  const distributed = Math.round(fee * totalStaffCnt / monthCnt);
+  const sumSales = sales.reduce((a, b) => a + b, 0);
+  const diff = distributed - sumSales;
+  // 最後に回数があるスタッフに端数を足す
+  for (let i = staffList.length - 1; i >= 0; i--) {
+    if ((staffCounts[staffList[i]] || 0) > 0) {
+      sales[i] += diff;
+      break;
+    }
+  }
+  return sales;
+}
 
 // 数字入力コンポーネント
 function NumInput({ value, onCommit, style, min = 0 }) {
@@ -80,7 +107,8 @@ export default function App() {
   const [month,setMonth]=useState(toMonth());
   const [props,setProps]=useState(DEFAULT_PROPS);
   const [staffList,setStaffList]=useState(DEFAULT_STAFF);
-  const [cleanData,setCleanData]=useState({});
+  const [cleanData,setCleanData]=useState({});   // 担当回数 key=cdKey
+  const [monthCntData,setMonthCntData]=useState({}); // 月回数 key=mcKey
   const [cases,setCases]=useState([]);
   const [cfg,setCfg]=useState(DEFAULT_CFG);
   const [toast,setToast]=useState("");
@@ -91,25 +119,42 @@ export default function App() {
   useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf] = await Promise.all([
-        dbGet(SK.properties), dbGet(SK.cleaning), dbGet(SK.cases), dbGet(SK.settings), dbGet(SK.staff)
+      const [p,cl,ca,c,sf,mc] = await Promise.all([
+        dbGet(SK.properties), dbGet(SK.cleaning), dbGet(SK.cases),
+        dbGet(SK.settings), dbGet(SK.staff), dbGet(SK.monthcnt)
       ]);
-      if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca); if(c)setCfg(c); if(sf)setStaffList(sf);
+      if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca);
+      if(c)setCfg(c); if(sf)setStaffList(sf); if(mc)setMonthCntData(mc);
       setLoading(false);
     })();
   },[authed]);
 
-  const saveProps  = async v => { setProps(v);     await dbSet(SK.properties, v); };
-  const saveClean  = async v => { setCleanData(v); await dbSet(SK.cleaning,   v); };
-  const saveCases  = async v => { setCases(v);     await dbSet(SK.cases,      v); };
-  const saveCfg    = async v => { setCfg(v);       await dbSet(SK.settings,   v); };
-  const saveStaff  = async v => { setStaffList(v); await dbSet(SK.staff,      v); };
+  const saveProps    = async v => { setProps(v);        await dbSet(SK.properties, v); };
+  const saveClean    = async v => { setCleanData(v);    await dbSet(SK.cleaning,   v); };
+  const saveMonthCnt = async v => { setMonthCntData(v); await dbSet(SK.monthcnt,   v); };
+  const saveCases    = async v => { setCases(v);        await dbSet(SK.cases,      v); };
+  const saveCfg      = async v => { setCfg(v);          await dbSet(SK.settings,   v); };
+  const saveStaff    = async v => { setStaffList(v);    await dbSet(SK.staff,      v); };
 
+  // 翌月コピー：担当回数は0リセット、月回数は引き継ぎ
   const carryOver = async () => {
     const nm = nextMo(month);
-    const d = {...cleanData};
-    props.forEach(p => staffList.forEach(s => { const k=`${nm}-${p.id}-${s}`; if(!(k in d)) d[k]=0; }));
-    await saveClean(d); setMonth(nm); showToast(`✅ ${nm} にコピーしました`);
+    const newClean = {...cleanData};
+    const newMc = {...monthCntData};
+    props.forEach(p => {
+      // 月回数を引き継ぎ
+      const curCnt = monthCntData[mcKey(month, p.id)] ?? p.cnt;
+      if (!(mcKey(nm, p.id) in newMc)) newMc[mcKey(nm, p.id)] = curCnt;
+      // 担当回数は0でセット
+      staffList.forEach(s => {
+        const k = cdKey(nm, p.id, s);
+        if (!(k in newClean)) newClean[k] = 0;
+      });
+    });
+    await saveClean(newClean);
+    await saveMonthCnt(newMc);
+    setMonth(nm);
+    showToast(`✅ ${nm} にコピーしました`);
   };
 
   if(!authed) return <Login onLogin={()=>setAuthed(true)}/>;
@@ -140,9 +185,9 @@ export default function App() {
       </div>
       <div style={S.body}>
         {loading ? <div style={S.empty}>読み込み中…</div> : <>
-          {tab==="cleaning" && <CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} carryOver={carryOver}/>}
+          {tab==="cleaning" && <CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
           {tab==="cases"    && <CasesTab    month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
-          {tab==="closing"  && <ClosingTab  month={month} props={props} staffList={staffList} cleanData={cleanData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
+          {tab==="closing"  && <ClosingTab  month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
           {tab==="cfg"      && <CfgTab      props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
         </>}
       </div>
@@ -151,15 +196,32 @@ export default function App() {
 }
 
 // 日常清掃タブ
-function CleaningTab({month,props,staffList,cleanData,saveClean,carryOver}) {
-  const up  = p => p.cnt>0 ? Math.floor(p.fee/p.cnt) : 0;
-  const getC = (pid,st) => Number(cleanData[`${month}-${pid}-${st}`]||0);
-  const setC = useCallback(async(pid,st,num)=>{
-    await saveClean({...cleanData,[`${month}-${pid}-${st}`]:num});
-  },[month,cleanData,saveClean]);
-  const stTotal = st => props.reduce((s,p)=>s+up(p)*getC(p.id,st),0);
-  const pTotal  = p  => staffList.reduce((s,st)=>s+up(p)*getC(p.id,st),0);
-  const grand   = staffList.reduce((s,st)=>s+stTotal(st),0);
+function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,saveMonthCnt,carryOver}) {
+  const getMc = pid => monthCntData[mcKey(month, pid)] ?? (props.find(p=>p.id===pid)?.cnt || 0);
+  const getC  = (pid,st) => Number(cleanData[cdKey(month,pid,st)] || 0);
+
+  const setMc = useCallback(async(pid, num) => {
+    await saveMonthCnt({...monthCntData, [mcKey(month, pid)]: num});
+  }, [month, monthCntData, saveMonthCnt]);
+
+  const setC = useCallback(async(pid, st, num) => {
+    await saveClean({...cleanData, [cdKey(month,pid,st)]: num});
+  }, [month, cleanData, saveClean]);
+
+  // 物件ごとのスタッフ売上（月額按分）
+  const getPropStaffSales = useCallback((p) => {
+    const mc = getMc(p.id);
+    const counts = {};
+    staffList.forEach(st => counts[st] = getC(p.id, st));
+    return calcStaffSales(p.fee, mc, counts, staffList);
+  }, [month, props, staffList, cleanData, monthCntData]);
+
+  const stTotal = st => props.reduce((s,p) => {
+    const sales = getPropStaffSales(p);
+    return s + (sales[staffList.indexOf(st)] || 0);
+  }, 0);
+  const grand = staffList.reduce((s,st) => s + stTotal(st), 0);
+
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={S.ctrlRow}>
@@ -182,35 +244,44 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,carryOver}) {
           <thead>
             <tr>
               <th style={{textAlign:"left",minWidth:110}}>物件名</th>
-              <th>月額</th><th>回数</th><th>単価</th>
+              <th>月額</th>
+              <th>月回数<br/><span style={{fontSize:9,color:"#f88"}}>今月</span></th>
               {staffList.map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
               {staffList.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
               <th>物件計</th>
             </tr>
           </thead>
           <tbody>
-            {props.map(p=>{
-              const u=up(p);
+            {props.map(p => {
+              const mc = getMc(p.id);
+              const sales = getPropStaffSales(p);
+              const totalStaffCnt = staffList.reduce((s,st)=>s+getC(p.id,st),0);
+              const propSalesTotal = sales.reduce((a,b)=>a+b,0);
               return (
                 <tr key={p.id}>
                   <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>{p.name}</td>
-                  <td>{yen(p.fee)}</td><td>{p.cnt}</td><td style={{color:"#888"}}>{yen(u)}</td>
+                  <td>{yen(p.fee)}</td>
+                  <td>
+                    <NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1}
+                      style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
+                  </td>
                   {staffList.map(st=>(
                     <td key={st}>
-                      <NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
+                      <NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0}
+                        style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
                     </td>
                   ))}
-                  {staffList.map(st=>(
-                    <td key={st+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(u*getC(p.id,st))}</td>
+                  {sales.map((s,i)=>(
+                    <td key={staffList[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>
                   ))}
-                  <td style={{fontWeight:700}}>{yen(pTotal(p))}</td>
+                  <td style={{fontWeight:700,color: totalStaffCnt===mc&&mc>0?"#2d6a4f":"#333"}}>{yen(propSalesTotal)}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{background:"#fff5f5"}}>
-              <td style={{textAlign:"left",fontWeight:700}} colSpan={4}>合計</td>
+              <td style={{textAlign:"left",fontWeight:700}} colSpan={3}>合計</td>
               {staffList.map(st=><td key={st}/>)}
               {staffList.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
               <td style={{fontWeight:700}}>{yen(grand)}</td>
@@ -218,6 +289,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,carryOver}) {
           </tfoot>
         </table>
       </div>
+      <p style={{fontSize:10,color:"#aaa",marginTop:8,textAlign:"center"}}>物件計が緑色＝担当回数合計が月回数と一致</p>
     </div>
   );
 }
@@ -300,18 +372,33 @@ function CasesTab({month,cases,staffList,saveCases,showToast}) {
 }
 
 // 月末締めタブ
-function ClosingTab({month,props,staffList,cleanData,cases,cfg,saveCfg,showToast}) {
+function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,saveCfg,showToast}) {
   const [loc,setLoc]=useState(cfg);
   useEffect(()=>setLoc(cfg),[cfg]);
-  const up=p=>p.cnt>0?Math.floor(p.fee/p.cnt):0;
-  const getC=(pid,st)=>Number(cleanData[`${month}-${pid}-${st}`]||0);
-  const cleanBySt=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=props.reduce((s,p)=>s+up(p)*getC(p.id,st),0);});return m;},[month,props,cleanData,staffList]);
+
+  const getMc = pid => monthCntData[mcKey(month, pid)] ?? (props.find(p=>p.id===pid)?.cnt || 0);
+  const getC  = (pid,st) => Number(cleanData[cdKey(month,pid,st)] || 0);
+
+  const cleanBySt = useMemo(()=>{
+    const m={};
+    staffList.forEach(st=>{ m[st]=0; });
+    props.forEach(p => {
+      const mc = getMc(p.id);
+      const counts = {};
+      staffList.forEach(st => counts[st] = getC(p.id, st));
+      const sales = calcStaffSales(p.fee, mc, counts, staffList);
+      staffList.forEach((st,i) => { m[st] = (m[st]||0) + sales[i]; });
+    });
+    return m;
+  },[month,props,cleanData,monthCntData,staffList]);
+
   const caseBySt=useMemo(()=>{
     const filt=cases.filter(c=>c.date.startsWith(month));const m={};
     staffList.forEach(st=>{m[st]={cash:0,xfer:0};});
     filt.forEach(c=>{if(!m[c.staff])m[c.staff]={cash:0,xfer:0};if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;});
     return m;
   },[month,cases,staffList]);
+
   const stSales=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0);});return m;},[cleanBySt,caseBySt,staffList]);
   const total=staffList.reduce((s,st)=>s+(stSales[st]||0),0);
   const cashT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
@@ -322,6 +409,7 @@ function ClosingTab({month,props,staffList,cleanData,cases,cfg,saveCfg,showToast
   const remain=total-deduct;
   const remPct=total>0?(remain/total*100).toFixed(1):0;
   const salaries=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=total>0?Math.round(remain*(stSales[st]||0)/total):0;});return m;},[remain,stSales,total,staffList]);
+
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
@@ -412,10 +500,11 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,showToast}) {
         <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,""])}>＋ スタッフを追加</button>
       </div>
       <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>🏠 物件マスタ</div>
+        <div style={S.sTitle}>🏠 物件マスタ（デフォルト月回数）</div>
+        <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
         <div style={S.tableWrap}>
           <table>
-            <thead><tr><th style={{textAlign:"left"}}>物件名</th><th>月額(円)</th><th>月回数</th><th></th></tr></thead>
+            <thead><tr><th style={{textAlign:"left"}}>物件名</th><th>月額(円)</th><th>標準月回数</th><th></th></tr></thead>
             <tbody>
               {lProps.map(p=>(
                 <tr key={p.id}>
