@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { dbGet, dbSet } from "./firebase";
 
-const PASSWORD = "nekono2024";
-const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff", monthcnt:"monthcnt" };
+const DEFAULT_PASSWORD = "nekono2024";
+const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff", monthcnt:"monthcnt", password:"password" };
 const DEFAULT_STAFF = ["公文","広田","ねこのて"];
 const DEFAULT_PROPS = [
   {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
@@ -79,9 +79,9 @@ function NumInput({ value, onCommit, style, min = 0 }) {
 }
 
 // ログイン
-function Login({onLogin}) {
+function Login({onLogin, password}) {
   const [pw,setPw]=useState(""); const [err,setErr]=useState(false); const [shake,setShake]=useState(false);
-  const go=()=>{ if(pw===PASSWORD) onLogin(); else {setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
+  const go=()=>{ if(pw===password) onLogin(); else {setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
   return (
     <div style={S.loginBg}>
       <style>{css}</style>
@@ -113,8 +113,17 @@ export default function App() {
   const [cfg,setCfg]=useState(DEFAULT_CFG);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
+  const [password,setPassword]=useState(DEFAULT_PASSWORD);
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+
+  useEffect(()=>{
+    // パスワードをFirebaseから先に読み込む
+    (async()=>{
+      const savedPw = await dbGet(SK.password);
+      if(savedPw) setPassword(savedPw);
+    })();
+  },[]);
 
   useEffect(()=>{
     if(!authed)return;
@@ -129,6 +138,7 @@ export default function App() {
     })();
   },[authed]);
 
+  const savePassword = async v => { setPassword(v);    await dbSet(SK.password,   v); };
   const saveProps    = async v => { setProps(v);        await dbSet(SK.properties, v); };
   const saveClean    = async v => { setCleanData(v);    await dbSet(SK.cleaning,   v); };
   const saveMonthCnt = async v => { setMonthCntData(v); await dbSet(SK.monthcnt,   v); };
@@ -157,7 +167,7 @@ export default function App() {
     showToast(`✅ ${nm} にコピーしました`);
   };
 
-  if(!authed) return <Login onLogin={()=>setAuthed(true)}/>;
+  if(!authed) return <Login onLogin={()=>setAuthed(true)} password={password}/>;
 
   const tabs=[["cleaning","🏠 日常清掃"],["cases","📋 案件"],["closing","📊 月末締め"],["cfg","⚙️ 設定"]];
 
@@ -188,7 +198,7 @@ export default function App() {
           {tab==="cleaning" && <CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
           {tab==="cases"    && <CasesTab    month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
           {tab==="closing"  && <ClosingTab  month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-          {tab==="cfg"      && <CfgTab      props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
+          {tab==="cfg"      && <CfgTab      props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
         </>}
       </div>
     </div>
@@ -484,7 +494,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
 }
 
 // 設定タブ
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,showToast}) {
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}) {
   const [lProps,setLProps]=useState(props); useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList); useEffect(()=>setLStaff(staffList),[staffList]);
   const [lCfg,setLCfg]=useState(cfg); useEffect(()=>setLCfg(cfg),[cfg]);
@@ -531,6 +541,28 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,showToast}) {
         <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
       </div>
       <button style={S.saveBtn} onClick={saveAll}>💾 すべて保存</button>
+      <PwChangeCard password={password} savePassword={savePassword} showToast={showToast}/>
+    </div>
+  );
+}
+
+function PwChangeCard({password,savePassword,showToast}) {
+  const [cur,setCur]=useState(""); const [next,setNext]=useState(""); const [confirm,setConfirm]=useState("");
+  const change = async () => {
+    if(cur !== password){showToast("⚠ 現在のパスワードが違います");return;}
+    if(!next){showToast("⚠ 新しいパスワードを入力してください");return;}
+    if(next !== confirm){showToast("⚠ 確認用パスワードが一致しません");return;}
+    await savePassword(next);
+    setCur(""); setNext(""); setConfirm("");
+    showToast("✅ パスワードを変更しました");
+  };
+  return (
+    <div style={{...S.card,marginTop:12,border:"1.5px solid #fcc"}}>
+      <div style={S.sTitle}>🔑 パスワード変更</div>
+      <FR label="現在のパスワード"><input type="password" value={cur} onChange={e=>setCur(e.target.value)} placeholder="現在のパスワード"/></FR>
+      <FR label="新しいパスワード"><input type="password" value={next} onChange={e=>setNext(e.target.value)} placeholder="新しいパスワード"/></FR>
+      <FR label="新しいパスワード（確認）"><input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="もう一度入力"/></FR>
+      <button style={{...S.saveBtn,background:"linear-gradient(135deg,#1a3a6e,#4a6fa5)"}} onClick={change}>🔑 パスワードを変更</button>
     </div>
   );
 }
