@@ -401,8 +401,10 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
 
   const stSales=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0);});return m;},[cleanBySt,caseBySt,staffList]);
   const total=staffList.reduce((s,st)=>s+(stSales[st]||0),0);
+  const cleanTotal=staffList.reduce((s,st)=>s+(cleanBySt[st]||0),0);
   const cashT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
-  const xferT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0);
+  // 振込 = 案件振込 + 日常清掃（全部振込扱い）
+  const xferT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0) + cleanTotal;
   const fixPct=total>0?(loc.fixedCost/total*100).toFixed(1):0;
   const taxAmt=Math.round(total*loc.taxRate/100);
   const deduct=loc.fixedCost+taxAmt;
@@ -424,8 +426,12 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
           ))}
         </div>
         <div style={{display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10,flexWrap:"wrap"}}>
-          <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込</div><b>{yen(xferT)}</b></div>
-          <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金</div><b>{yen(cashT)}</b></div>
+          <div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div>
+            <b>{yen(xferT)}</b>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(xferT-cleanTotal)}</div>
+          </div>
+          <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金（案件）</div><b>{yen(cashT)}</b></div>
           <div style={{marginLeft:"auto"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>月売上合計</div><b style={{fontSize:22}}>{yen(total)}</b></div>
         </div>
       </div>
