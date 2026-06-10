@@ -3,7 +3,7 @@ import { dbGet, dbSet } from "./firebase";
 
 const DEFAULT_PASSWORD = "nekono2024";
 const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff", monthcnt:"monthcnt", password:"password" };
-const DEFAULT_STAFF = ["公文","広田","ねこのて"];
+const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
   {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
   {id:2,  name:"ティエドール柚須",           fee:8000,  cnt:4},
@@ -32,6 +32,10 @@ const yen = n => "¥"+Math.round(Number(n)||0).toLocaleString();
 const toDay = () => new Date().toISOString().slice(0,10);
 const toMonth = () => new Date().toISOString().slice(0,7);
 const nextMo = ym => { const [y,m]=ym.split("-").map(Number); return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`; };
+
+// スタッフ名リスト取得ヘルパー
+const stNames = list => list.map(s => typeof s === "string" ? s : s.name);
+const stTaxTarget = (list, name) => { const s = list.find(s => (typeof s === "string" ? s : s.name) === name); return s ? (typeof s === "string" ? true : s.taxTarget !== false) : true; };
 
 // 月ごとの物件月回数キー
 const mcKey = (month, pid) => `${month}-cnt-${pid}`;
@@ -222,15 +226,15 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   const getPropStaffSales = useCallback((p) => {
     const mc = getMc(p.id);
     const counts = {};
-    staffList.forEach(st => counts[st] = getC(p.id, st));
-    return calcStaffSales(p.fee, mc, counts, staffList);
-  }, [month, props, staffList, cleanData, monthCntData]);
+    stNames(staffList).forEach(st => counts[st] = getC(p.id, st));
+    return calcStaffSales(p.fee, mc, counts, stNames(staffList));
+  }, [month, props, staffList, cleanData, monthCntData, staffList]);
 
   const stTotal = st => props.reduce((s,p) => {
     const sales = getPropStaffSales(p);
-    return s + (sales[staffList.indexOf(st)] || 0);
+    return s + (sales[stNames(staffList).indexOf(st)] || 0);
   }, 0);
-  const grand = staffList.reduce((s,st) => s + stTotal(st), 0);
+  const grand = stNames(staffList).reduce((s,st) => s + stTotal(st), 0);
 
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
@@ -238,7 +242,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
         <button style={S.redBtn} onClick={carryOver}>📋 翌月コピー</button>
       </div>
       <div style={S.staffBar}>
-        {staffList.map(st=>(
+        {stNames(staffList).map(st=>(
           <div key={st} style={S.staffCell}>
             <div style={S.staffLabel}>{st}</div>
             <div style={S.staffAmt}>{yen(stTotal(st))}</div>
@@ -256,8 +260,8 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
               <th style={{textAlign:"left",minWidth:110}}>物件名</th>
               <th>月額</th>
               <th>月回数<br/><span style={{fontSize:9,color:"#f88"}}>今月</span></th>
-              {staffList.map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
-              {staffList.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
+              {stNames(staffList).map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
+              {stNames(staffList).map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
               <th>物件計</th>
             </tr>
           </thead>
@@ -275,7 +279,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
                     <NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1}
                       style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
                   </td>
-                  {staffList.map(st=>(
+                  {stNames(staffList).map(st=>(
                     <td key={st}>
                       <NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0}
                         style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
@@ -292,8 +296,8 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
           <tfoot>
             <tr style={{background:"#fff5f5"}}>
               <td style={{textAlign:"left",fontWeight:700}} colSpan={3}>合計</td>
-              {staffList.map(st=><td key={st}/>)}
-              {staffList.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
+              {stNames(staffList).map(st=><td key={st}/>)}
+              {stNames(staffList).map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
               <td style={{fontWeight:700}}>{yen(grand)}</td>
             </tr>
           </tfoot>
@@ -394,23 +398,27 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
     staffList.forEach(st=>{ m[st]=0; });
     props.forEach(p => {
       const mc = getMc(p.id);
+      const snames = stNames(staffList);
       const counts = {};
-      staffList.forEach(st => counts[st] = getC(p.id, st));
-      const sales = calcStaffSales(p.fee, mc, counts, staffList);
-      staffList.forEach((st,i) => { m[st] = (m[st]||0) + sales[i]; });
+      snames.forEach(st => counts[st] = getC(p.id, st));
+      const sales = calcStaffSales(p.fee, mc, counts, snames);
+      snames.forEach((st,i) => { m[st] = (m[st]||0) + sales[i]; });
     });
     return m;
-  },[month,props,cleanData,monthCntData,staffList]);
+  },[month,props,cleanData,monthCntData,staffList,staffList]);
 
   const caseBySt=useMemo(()=>{
     const filt=cases.filter(c=>c.date.startsWith(month));const m={};
-    staffList.forEach(st=>{m[st]={cash:0,xfer:0};});
+    stNames(staffList).forEach(st=>{m[st]={cash:0,xfer:0};});
     filt.forEach(c=>{if(!m[c.staff])m[c.staff]={cash:0,xfer:0};if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;});
     return m;
   },[month,cases,staffList]);
 
-  const stSales=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0);});return m;},[cleanBySt,caseBySt,staffList]);
-  const total=staffList.reduce((s,st)=>s+(stSales[st]||0),0);
+  const stSales=useMemo(()=>{const m={};stNames(staffList).forEach(st=>{m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0);});return m;},[cleanBySt,caseBySt,staffList]);
+  const total=stNames(staffList).reduce((s,st)=>s+(stSales[st]||0),0);
+  // 控除対象スタッフのみで按分計算
+  const taxTargetNames=stNames(staffList).filter(st=>stTaxTarget(staffList,st));
+  const taxTargetTotal=taxTargetNames.reduce((s,st)=>s+(stSales[st]||0),0);
   const cleanTotal=staffList.reduce((s,st)=>s+(cleanBySt[st]||0),0);
   const cashT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   // 振込 = 案件振込 + 日常清掃（全部振込扱い）
@@ -420,14 +428,24 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
   const deduct=loc.fixedCost+taxAmt;
   const remain=total-deduct;
   const remPct=total>0?(remain/total*100).toFixed(1):0;
-  const salaries=useMemo(()=>{const m={};staffList.forEach(st=>{m[st]=total>0?Math.round(remain*(stSales[st]||0)/total):0;});return m;},[remain,stSales,total,staffList]);
+  const salaries=useMemo(()=>{
+    const m={};
+    stNames(staffList).forEach(st=>{
+      if(stTaxTarget(staffList,st)){
+        m[st]=taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):0;
+      } else {
+        m[st]=null; // 控除対象外
+      }
+    });
+    return m;
+  },[remain,stSales,taxTargetTotal,staffList]);
 
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-          {staffList.map(st=>(
+          {stNames(staffList).map(st=>(
             <div key={st} style={S.closingCard}>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div>
               <div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div>
@@ -468,24 +486,31 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
       </div>
       <div style={S.card}>
         <div style={S.sTitle}>給与按分（売上比率で自動計算）</div>
-        {staffList.map(st=>{
-          const ratio=total>0?((stSales[st]||0)/total*100).toFixed(1):0;
+        {stNames(staffList).map(st=>{
+          const isTarget = stTaxTarget(staffList,st);
+          const ratio=taxTargetTotal>0&&isTarget?((stSales[st]||0)/taxTargetTotal*100).toFixed(1):0;
           return (
-            <div key={st} style={{marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontWeight:700}}>👤 {st}給与</span>
+            <div key={st} style={{marginBottom:14,opacity:isTarget?1:0.7}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontWeight:700}}>👤 {st}給与</span>
+                  {!isTarget&&<span style={{fontSize:10,background:"#f0ece4",color:"#888",borderRadius:4,padding:"1px 6px"}}>固定費に含む</span>}
+                </div>
                 <div style={{textAlign:"right"}}>
-                  <span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
-                  <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span>
+                  {isTarget
+                    ? <><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
+                        <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>
+                    : <span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>
+                  }
                 </div>
               </div>
-              <div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>
+              {isTarget&&<div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>}
               <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
             </div>
           );
         })}
         <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}>
-          <b>給与合計</b><b>{yen(staffList.reduce((s,st)=>s+(salaries[st]||0),0))}</b>
+          <b>給与合計（按分対象）</b><b>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b>
         </div>
         <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む　※山辺ボーナスはねこのて給与から支払い</p>
       </div>
@@ -496,24 +521,40 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
 // 設定タブ
 function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}) {
   const [lProps,setLProps]=useState(props); useEffect(()=>setLProps(props),[props]);
-  const [lStaff,setLStaff]=useState(staffList); useEffect(()=>setLStaff(staffList),[staffList]);
+  const [lStaff,setLStaff]=useState(staffList.map(s=>typeof s==="string"?{name:s,taxTarget:true}:s)); 
+  useEffect(()=>setLStaff(staffList.map(s=>typeof s==="string"?{name:s,taxTarget:true}:s)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg); useEffect(()=>setLCfg(cfg),[cfg]);
   const updProp=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:k==="name"?v:Number(v)}:p));
   const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
   const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
-  const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
+  const updStaffName=(i,v)=>{const a=[...lStaff];a[i]={...a[i],name:v};setLStaff(a);};
+  const toggleTaxTarget=(i)=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
+  const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>👥 スタッフ管理</div>
         {lStaff.map((s,i)=>(
-          <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
-            <input type="text" value={s} onChange={e=>{const a=[...lStaff];a[i]=e.target.value;setLStaff(a);}} placeholder="スタッフ名" style={{flex:1}}/>
+          <div key={i} style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",background:"#faf8f5",borderRadius:10,padding:"8px 10px"}}>
+            <input type="text" value={s.name||""} onChange={e=>updStaffName(i,e.target.value)} placeholder="スタッフ名" style={{flex:1}}/>
+            <div style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+              <span style={{fontSize:11,color:"#888"}}>控除対象</span>
+              <button onClick={()=>toggleTaxTarget(i)} style={{
+                width:42,height:24,borderRadius:12,border:"none",cursor:"pointer",
+                background:s.taxTarget!==false?"#2d6a4f":"#ccc",
+                position:"relative",transition:"background .2s"
+              }}>
+                <span style={{
+                  position:"absolute",top:3,left:s.taxTarget!==false?20:3,
+                  width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"
+                }}/>
+              </button>
+            </div>
             <button style={{...S.iconBtn,color:"#e74c3c",fontSize:16}} onClick={()=>delStaff(i)}>✕</button>
           </div>
         ))}
-        <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,""])}>＋ スタッフを追加</button>
+        <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,{name:"",taxTarget:true}])}>＋ スタッフを追加</button>
       </div>
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>🏠 物件マスタ（デフォルト月回数）</div>
