@@ -7,94 +7,79 @@ const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:t
 const DEFAULT_PROPS = [
   {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
   {id:2,  name:"ティエドール柚須",           fee:8000,  cnt:4},
-  {id:3,  name:"グランリヴィエラ",            fee:5000,  cnt:4},
-  {id:4,  name:"ラヴィータ美松",              fee:10000, cnt:5},
-  {id:5,  name:"フローレス長尾",              fee:10000, cnt:5},
-  {id:6,  name:"塔原サンハイツ",              fee:6600,  cnt:1},
-  {id:7,  name:"ビオニール1",                 fee:8000,  cnt:2},
-  {id:8,  name:"ホークヒルズ那珂川",          fee:2500,  cnt:1},
-  {id:9,  name:"サニーガーデン那珂川",        fee:5000,  cnt:2},
-  {id:10, name:"アプリーレ1",                fee:2500,  cnt:1},
-  {id:11, name:"サニータウン次郎丸",          fee:2500,  cnt:1},
-  {id:12, name:"ホークヒルズ古賀",            fee:8000,  cnt:4},
-  {id:13, name:"ホーユーコンフォルト大濠公",  fee:12000, cnt:4},
-  {id:14, name:"グレースコート",              fee:12000, cnt:2},
-  {id:15, name:"第5サンシャイン",             fee:25300, cnt:5},
-  {id:16, name:"グランドシャルマン",          fee:17280, cnt:4},
-  {id:17, name:"レクサスガーデン",            fee:17600, cnt:4},
-  {id:18, name:"サニーガーデン安井野",        fee:8800,  cnt:5},
-  {id:19, name:"アクセス",                    fee:14000, cnt:2},
-  {id:20, name:"鞍山コーポ",                  fee:4000,  cnt:2},
+  {id:3,  name:"グランリヴィエラ",           fee:5000,  cnt:4},
+  {id:4,  name:"ラヴィータ美松",             fee:10000, cnt:5},
+  {id:5,  name:"フローレス長尾",             fee:10000, cnt:5},
+  {id:6,  name:"塔原サンハイツ",             fee:6600,  cnt:1},
+  {id:7,  name:"ビオニール1",                fee:8000,  cnt:2},
+  {id:8,  name:"ホークヒルズ那珂川",         fee:2500,  cnt:1},
+  {id:9,  name:"サニーガーデン那珂川",       fee:5000,  cnt:2},
+  {id:10, name:"アプリーレ1",               fee:2500,  cnt:1},
+  {id:11, name:"サニータウン次郎丸",         fee:2500,  cnt:1},
+  {id:12, name:"ホークヒルズ古賀",           fee:8000,  cnt:4},
+  {id:13, name:"ホーユーコンフォルト大濠公", fee:12000, cnt:4},
+  {id:14, name:"グレースコート",             fee:12000, cnt:2},
+  {id:15, name:"第5サンシャイン",            fee:25300, cnt:5},
+  {id:16, name:"グランドシャルマン",         fee:17280, cnt:4},
+  {id:17, name:"レクサスガーデン",           fee:17600, cnt:4},
+  {id:18, name:"サニーガーデン安井野",       fee:8800,  cnt:5},
+  {id:19, name:"アクセス",                   fee:14000, cnt:2},
+  {id:20, name:"鞍山コーポ",                 fee:4000,  cnt:2},
 ];
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
+
+// スタッフヘルパー
+const toStaffObj = s => typeof s === "string" ? {name:s, taxTarget:true} : s;
+const stNames = list => list.map(s => toStaffObj(s).name);
+const isTaxTarget = s => toStaffObj(s).taxTarget !== false;
 
 const yen = n => "¥"+Math.round(Number(n)||0).toLocaleString();
 const toDay = () => new Date().toISOString().slice(0,10);
 const toMonth = () => new Date().toISOString().slice(0,7);
 const nextMo = ym => { const [y,m]=ym.split("-").map(Number); return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`; };
+const mcKey = (month,pid) => `${month}-cnt-${pid}`;
+const cdKey = (month,pid,st) => `${month}-${pid}-${st}`;
 
-// スタッフ名リスト取得ヘルパー
-const stNames = list => list.map(s => typeof s === "string" ? s : s.name);
-const stTaxTarget = (list, name) => { const s = list.find(s => (typeof s === "string" ? s : s.name) === name); return s ? (typeof s === "string" ? true : s.taxTarget !== false) : true; };
+const stGet = async k => { try { const r=await dbGet(k); return r||null; } catch { return null; } };
+const stSet = async (k,v) => { try { await dbSet(k,v); } catch {} };
 
-// 月ごとの物件月回数キー
-const mcKey = (month, pid) => `${month}-cnt-${pid}`;
-// 月ごとの担当回数キー
-const cdKey = (month, pid, st) => `${month}-${pid}-${st}`;
-
-// スタッフの売上計算：月額×(担当回数/月回数)、合計が月額に一致するよう最後で調整
-function calcStaffSales(fee, monthCnt, staffCounts, staffList) {
-  if (!monthCnt || monthCnt === 0) return staffList.map(() => 0);
-  const totalStaffCnt = staffList.reduce((s, st) => s + (staffCounts[st] || 0), 0);
-  if (totalStaffCnt === 0) return staffList.map(() => 0);
-
-  // 各スタッフの按分（切り捨て）
-  let sales = staffList.map(st => Math.floor(fee * (staffCounts[st] || 0) / monthCnt));
-  // 端数を最後の作業者に加算して合計=担当分の月額になるように調整
-  const distributed = Math.round(fee * totalStaffCnt / monthCnt);
-  const sumSales = sales.reduce((a, b) => a + b, 0);
-  const diff = distributed - sumSales;
-  // 最後に回数があるスタッフに端数を足す
-  for (let i = staffList.length - 1; i >= 0; i--) {
-    if ((staffCounts[staffList[i]] || 0) > 0) {
-      sales[i] += diff;
-      break;
-    }
-  }
+// スタッフ売上按分（月額×担当回数÷月回数、合計が担当分の月額に一致）
+function calcStaffSales(fee, monthCnt, staffCounts, names) {
+  if (!monthCnt) return names.map(()=>0);
+  const totalCnt = names.reduce((s,st)=>s+(staffCounts[st]||0),0);
+  if (!totalCnt) return names.map(()=>0);
+  let sales = names.map(st => Math.floor(fee*(staffCounts[st]||0)/monthCnt));
+  const distributed = Math.round(fee*totalCnt/monthCnt);
+  const diff = distributed - sales.reduce((a,b)=>a+b,0);
+  for (let i=names.length-1;i>=0;i--) { if((staffCounts[names[i]]||0)>0){sales[i]+=diff;break;} }
   return sales;
 }
 
-// 数字入力コンポーネント
-function NumInput({ value, onCommit, style, min = 0 }) {
-  const [local, setLocal] = useState(String(value ?? ""));
-  useEffect(() => { setLocal(String(value ?? "")); }, [value]);
-  const handleChange = e => { if (e.target.value === "" || /^-?\d*$/.test(e.target.value)) setLocal(e.target.value); };
-  const handleBlur = () => {
-    const num = Math.max(min, Number(local) || 0);
-    setLocal(String(num));
-    if (onCommit) onCommit(num);
-  };
+// 数字入力
+function NumInput({value, onCommit, style, min=0}) {
+  const [local,setLocal]=useState(String(value??""));
+  useEffect(()=>setLocal(String(value??"")), [value]);
   return (
     <input type="text" inputMode="numeric" value={local}
-      onChange={handleChange} onBlur={handleBlur}
-      onKeyDown={e => e.key==="Enter" && e.target.blur()}
-      onFocus={e => e.target.select()} style={style} />
+      onChange={e=>{if(e.target.value===""||/^-?\d*$/.test(e.target.value))setLocal(e.target.value);}}
+      onBlur={()=>{const n=Math.max(min,Number(local)||0);setLocal(String(n));if(onCommit)onCommit(n);}}
+      onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
+      onFocus={e=>e.target.select()} style={style}/>
   );
 }
 
 // ログイン
-function Login({onLogin, password}) {
+function Login({onLogin,password}) {
   const [pw,setPw]=useState(""); const [err,setErr]=useState(false); const [shake,setShake]=useState(false);
-  const go=()=>{ if(pw===password) onLogin(); else {setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
+  const go=()=>{if(pw===password)onLogin();else{setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
   return (
-    <div style={S.loginBg}>
-      <style>{css}</style>
-      <div style={{...S.loginCard, animation:shake?"shake .4s":"rise .5s ease"}}>
+    <div style={S.loginBg}><style>{css}</style>
+      <div style={{...S.loginCard,animation:shake?"shake .4s":"rise .5s ease"}}>
         <div style={S.loginIcon}>🐾</div>
         <div style={S.loginTitle}>便利屋 ねこのて</div>
         <div style={S.loginSub}>売上管理システム</div>
-        <input style={{...S.loginInput, borderColor:err?"#ff6b6b":"#441111"}}
-          type="password" placeholder="パスワードを入力" value={pw}
+        <input style={{...S.loginInput,borderColor:err?"#ff6b6b":"#441111"}} type="password"
+          placeholder="パスワードを入力" value={pw}
           onChange={e=>{setPw(e.target.value);setErr(false);}}
           onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
         {err&&<p style={{color:"#ff6b6b",fontSize:12,marginTop:-4}}>パスワードが違います</p>}
@@ -111,59 +96,53 @@ export default function App() {
   const [month,setMonth]=useState(toMonth());
   const [props,setProps]=useState(DEFAULT_PROPS);
   const [staffList,setStaffList]=useState(DEFAULT_STAFF);
-  const [cleanData,setCleanData]=useState({});   // 担当回数 key=cdKey
-  const [monthCntData,setMonthCntData]=useState({}); // 月回数 key=mcKey
+  const [cleanData,setCleanData]=useState({});
+  const [monthCntData,setMonthCntData]=useState({});
   const [cases,setCases]=useState([]);
   const [cfg,setCfg]=useState(DEFAULT_CFG);
+  const [password,setPassword]=useState(DEFAULT_PASSWORD);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
-  const [password,setPassword]=useState(DEFAULT_PASSWORD);
 
-  const showToast = msg => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   useEffect(()=>{
-    // パスワードをFirebaseから先に読み込む
-    (async()=>{
-      const savedPw = await dbGet(SK.password);
-      if(savedPw) setPassword(savedPw);
-    })();
+    (async()=>{const pw=await stGet(SK.password);if(pw)setPassword(pw);})();
   },[]);
 
   useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf,mc] = await Promise.all([
-        dbGet(SK.properties), dbGet(SK.cleaning), dbGet(SK.cases),
-        dbGet(SK.settings), dbGet(SK.staff), dbGet(SK.monthcnt)
+      const [p,cl,ca,c,sf,mc]=await Promise.all([
+        stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),
+        stGet(SK.settings),stGet(SK.staff),stGet(SK.monthcnt)
       ]);
-      if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca);
-      if(c)setCfg(c); if(sf)setStaffList(sf); if(mc)setMonthCntData(mc);
+      if(p)setProps(p);
+      if(cl)setCleanData(cl);
+      if(ca)setCases(ca);
+      if(c)setCfg(c);
+      if(sf)setStaffList(sf.map(toStaffObj));
+      if(mc)setMonthCntData(mc);
       setLoading(false);
     })();
   },[authed]);
 
-  const savePassword = async v => { setPassword(v);    await dbSet(SK.password,   v); };
-  const saveProps    = async v => { setProps(v);        await dbSet(SK.properties, v); };
-  const saveClean    = async v => { setCleanData(v);    await dbSet(SK.cleaning,   v); };
-  const saveMonthCnt = async v => { setMonthCntData(v); await dbSet(SK.monthcnt,   v); };
-  const saveCases    = async v => { setCases(v);        await dbSet(SK.cases,      v); };
-  const saveCfg      = async v => { setCfg(v);          await dbSet(SK.settings,   v); };
-  const saveStaff    = async v => { setStaffList(v);    await dbSet(SK.staff,      v); };
+  const saveProps    = async v=>{setProps(v);       await stSet(SK.properties,v);};
+  const saveClean    = async v=>{setCleanData(v);   await stSet(SK.cleaning,v);};
+  const saveMonthCnt = async v=>{setMonthCntData(v);await stSet(SK.monthcnt,v);};
+  const saveCases    = async v=>{setCases(v);       await stSet(SK.cases,v);};
+  const saveCfg      = async v=>{setCfg(v);         await stSet(SK.settings,v);};
+  const saveStaff    = async v=>{setStaffList(v);   await stSet(SK.staff,v);};
+  const savePassword = async v=>{setPassword(v);    await stSet(SK.password,v);};
 
-  // 翌月コピー：担当回数は0リセット、月回数は引き継ぎ
-  const carryOver = async () => {
-    const nm = nextMo(month);
-    const newClean = {...cleanData};
-    const newMc = {...monthCntData};
-    props.forEach(p => {
-      // 月回数を引き継ぎ
-      const curCnt = monthCntData[mcKey(month, p.id)] ?? p.cnt;
-      if (!(mcKey(nm, p.id) in newMc)) newMc[mcKey(nm, p.id)] = curCnt;
-      // 担当回数は0でセット
-      staffList.forEach(s => {
-        const k = cdKey(nm, p.id, s);
-        if (!(k in newClean)) newClean[k] = 0;
-      });
+  const carryOver=async()=>{
+    const nm=nextMo(month);
+    const newClean={...cleanData};
+    const newMc={...monthCntData};
+    props.forEach(p=>{
+      const curCnt=monthCntData[mcKey(month,p.id)]??p.cnt;
+      if(!(mcKey(nm,p.id) in newMc))newMc[mcKey(nm,p.id)]=curCnt;
+      stNames(staffList).forEach(s=>{const k=cdKey(nm,p.id,s);if(!(k in newClean))newClean[k]=0;});
     });
     await saveClean(newClean);
     await saveMonthCnt(newMc);
@@ -171,14 +150,12 @@ export default function App() {
     showToast(`✅ ${nm} にコピーしました`);
   };
 
-  if(!authed) return <Login onLogin={()=>setAuthed(true)} password={password}/>;
+  if(!authed)return <Login onLogin={()=>setAuthed(true)} password={password}/>;
 
   const tabs=[["cleaning","🏠 日常清掃"],["cases","📋 案件"],["closing","📊 月末締め"],["cfg","⚙️ 設定"]];
-
   return (
-    <div style={S.app}>
-      <style>{css}</style>
-      {toast && <div style={S.toast}>{toast}</div>}
+    <div style={S.app}><style>{css}</style>
+      {toast&&<div style={S.toast}>{toast}</div>}
       <div style={S.header}>
         <span style={{fontSize:22}}>🐾</span>
         <div style={{flex:1,marginLeft:10}}>
@@ -198,11 +175,11 @@ export default function App() {
         ))}
       </div>
       <div style={S.body}>
-        {loading ? <div style={S.empty}>読み込み中…</div> : <>
-          {tab==="cleaning" && <CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
-          {tab==="cases"    && <CasesTab    month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
-          {tab==="closing"  && <ClosingTab  month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-          {tab==="cfg"      && <CfgTab      props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
+        {loading?<div style={S.empty}>読み込み中…</div>:<>
+          {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
+          {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
+          {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
+          {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
         </>}
       </div>
     </div>
@@ -211,30 +188,21 @@ export default function App() {
 
 // 日常清掃タブ
 function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,saveMonthCnt,carryOver}) {
-  const getMc = pid => monthCntData[mcKey(month, pid)] ?? (props.find(p=>p.id===pid)?.cnt || 0);
-  const getC  = (pid,st) => Number(cleanData[cdKey(month,pid,st)] || 0);
+  const names=stNames(staffList);
+  const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
+  const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
+  const setMc=useCallback(async(pid,num)=>{await saveMonthCnt({...monthCntData,[mcKey(month,pid)]:num});},[month,monthCntData,saveMonthCnt]);
+  const setC=useCallback(async(pid,st,num)=>{await saveClean({...cleanData,[cdKey(month,pid,st)]:num});},[month,cleanData,saveClean]);
 
-  const setMc = useCallback(async(pid, num) => {
-    await saveMonthCnt({...monthCntData, [mcKey(month, pid)]: num});
-  }, [month, monthCntData, saveMonthCnt]);
+  const getPropSales=useCallback(p=>{
+    const mc=getMc(p.id);
+    const counts={};
+    names.forEach(st=>counts[st]=getC(p.id,st));
+    return calcStaffSales(p.fee,mc,counts,names);
+  },[month,props,staffList,cleanData,monthCntData]);
 
-  const setC = useCallback(async(pid, st, num) => {
-    await saveClean({...cleanData, [cdKey(month,pid,st)]: num});
-  }, [month, cleanData, saveClean]);
-
-  // 物件ごとのスタッフ売上（月額按分）
-  const getPropStaffSales = useCallback((p) => {
-    const mc = getMc(p.id);
-    const counts = {};
-    stNames(staffList).forEach(st => counts[st] = getC(p.id, st));
-    return calcStaffSales(p.fee, mc, counts, stNames(staffList));
-  }, [month, props, staffList, cleanData, monthCntData, staffList]);
-
-  const stTotal = st => props.reduce((s,p) => {
-    const sales = getPropStaffSales(p);
-    return s + (sales[stNames(staffList).indexOf(st)] || 0);
-  }, 0);
-  const grand = stNames(staffList).reduce((s,st) => s + stTotal(st), 0);
+  const stTotal=st=>props.reduce((s,p)=>{const sales=getPropSales(p);return s+(sales[names.indexOf(st)]||0);},0);
+  const grand=names.reduce((s,st)=>s+stTotal(st),0);
 
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
@@ -242,7 +210,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
         <button style={S.redBtn} onClick={carryOver}>📋 翌月コピー</button>
       </div>
       <div style={S.staffBar}>
-        {stNames(staffList).map(st=>(
+        {names.map(st=>(
           <div key={st} style={S.staffCell}>
             <div style={S.staffLabel}>{st}</div>
             <div style={S.staffAmt}>{yen(stTotal(st))}</div>
@@ -260,35 +228,29 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
               <th style={{textAlign:"left",minWidth:110}}>物件名</th>
               <th>月額</th>
               <th>月回数<br/><span style={{fontSize:9,color:"#f88"}}>今月</span></th>
-              {stNames(staffList).map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
-              {stNames(staffList).map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
+              {names.map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
+              {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
               <th>物件計</th>
             </tr>
           </thead>
           <tbody>
-            {props.map(p => {
-              const mc = getMc(p.id);
-              const sales = getPropStaffSales(p);
-              const totalStaffCnt = staffList.reduce((s,st)=>s+getC(p.id,st),0);
-              const propSalesTotal = sales.reduce((a,b)=>a+b,0);
+            {props.map(p=>{
+              const mc=getMc(p.id);
+              const sales=getPropSales(p);
+              const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
+              const propTotal=sales.reduce((a,b)=>a+b,0);
               return (
                 <tr key={p.id}>
                   <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>{p.name}</td>
                   <td>{yen(p.fee)}</td>
-                  <td>
-                    <NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1}
-                      style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
-                  </td>
-                  {stNames(staffList).map(st=>(
-                    <td key={st}>
-                      <NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0}
-                        style={{width:44,textAlign:"center",padding:"4px 2px"}}/>
-                    </td>
+                  <td><NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
+                  {names.map(st=>(
+                    <td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
                   ))}
                   {sales.map((s,i)=>(
-                    <td key={staffList[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>
+                    <td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>
                   ))}
-                  <td style={{fontWeight:700,color: totalStaffCnt===mc&&mc>0?"#2d6a4f":"#333"}}>{yen(propSalesTotal)}</td>
+                  <td style={{fontWeight:700,color:totalCnt===mc&&mc>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
                 </tr>
               );
             })}
@@ -296,8 +258,8 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
           <tfoot>
             <tr style={{background:"#fff5f5"}}>
               <td style={{textAlign:"left",fontWeight:700}} colSpan={3}>合計</td>
-              {stNames(staffList).map(st=><td key={st}/>)}
-              {stNames(staffList).map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
+              {names.map(st=><td key={st}/>)}
+              {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
               <td style={{fontWeight:700}}>{yen(grand)}</td>
             </tr>
           </tfoot>
@@ -310,27 +272,34 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
 
 // 案件タブ
 function CasesTab({month,cases,staffList,saveCases,showToast}) {
-  const blank=()=>({date:toDay(),name:"",staff:staffList[0]||"",payment:"現金",amount:""});
+  const names=stNames(staffList);
+  const blank=()=>({date:toDay(),name:"",staff:names[0]||"",payment:"現金",amount:""});
   const [form,setForm]=useState(blank());
   const [editId,setEditId]=useState(null);
-  const filtered=useMemo(()=>cases.filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),[cases,month]);
+
+  const filtered=useMemo(()=>
+    (cases||[]).filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),
+    [cases,month]
+  );
   const total=filtered.reduce((s,c)=>s+c.amount,0);
   const cashT=filtered.filter(c=>c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const xferT=filtered.filter(c=>c.payment==="振込").reduce((s,c)=>s+c.amount,0);
+
   const handleSave=async()=>{
     if(!form.date||!form.name||!form.amount){showToast("⚠ 日付・名前・金額は必須");return;}
-    const amt=Number(form.amount); if(!amt){showToast("⚠ 金額を入力してください");return;}
+    const amt=Number(form.amount);if(!amt){showToast("⚠ 金額を入力してください");return;}
     if(editId){
-      await saveCases(cases.map(c=>c.id===editId?{...form,id:editId,amount:amt}:c));
+      await saveCases((cases||[]).map(c=>c.id===editId?{...form,id:editId,amount:amt}:c));
       setEditId(null);showToast("✅ 更新しました");
     } else {
-      await saveCases([{...form,id:Date.now(),amount:amt},...cases]);
+      await saveCases([{...form,id:Date.now(),amount:amt},...(cases||[])]);
       showToast("✅ 保存しました");
     }
     setForm(blank());
   };
   const startEdit=c=>{setForm({...c,amount:String(c.amount)});setEditId(c.id);};
-  const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases(cases.filter(c=>c.id!==id));showToast("🗑 削除しました");};
+  const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除しました");};
+
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={S.pills}>
@@ -341,7 +310,11 @@ function CasesTab({month,cases,staffList,saveCases,showToast}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
           <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
           <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
-          <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{staffList.map(s=><option key={s}>{s}</option>)}</select></FR>
+          <FR label="担当">
+            <select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>
+              {names.map(s=><option key={s}>{s}</option>)}
+            </select>
+          </FR>
           <FR label="支払">
             <div style={{display:"flex",gap:8}}>
               {["現金","振込"].map(p=>(
@@ -374,7 +347,10 @@ function CasesTab({month,cases,staffList,saveCases,showToast}) {
                   <td>{c.staff}</td>
                   <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment}</span></td>
                   <td style={{fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
-                  <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
+                  <td>
+                    <button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button>
+                    <button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -389,53 +365,57 @@ function CasesTab({month,cases,staffList,saveCases,showToast}) {
 function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,saveCfg,showToast}) {
   const [loc,setLoc]=useState(cfg);
   useEffect(()=>setLoc(cfg),[cfg]);
+  const names=stNames(staffList);
 
-  const getMc = pid => monthCntData[mcKey(month, pid)] ?? (props.find(p=>p.id===pid)?.cnt || 0);
-  const getC  = (pid,st) => Number(cleanData[cdKey(month,pid,st)] || 0);
+  const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
+  const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
 
-  const cleanBySt = useMemo(()=>{
-    const m={};
-    staffList.forEach(st=>{ m[st]=0; });
-    props.forEach(p => {
-      const mc = getMc(p.id);
-      const snames = stNames(staffList);
-      const counts = {};
-      snames.forEach(st => counts[st] = getC(p.id, st));
-      const sales = calcStaffSales(p.fee, mc, counts, snames);
-      snames.forEach((st,i) => { m[st] = (m[st]||0) + sales[i]; });
+  const cleanBySt=useMemo(()=>{
+    const m={};names.forEach(st=>m[st]=0);
+    props.forEach(p=>{
+      const counts={};names.forEach(st=>counts[st]=getC(p.id,st));
+      const sales=calcStaffSales(p.fee,getMc(p.id),counts,names);
+      names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);
     });
     return m;
-  },[month,props,cleanData,monthCntData,staffList,staffList]);
+  },[month,props,cleanData,monthCntData,staffList]);
 
   const caseBySt=useMemo(()=>{
-    const filt=cases.filter(c=>c.date.startsWith(month));const m={};
-    stNames(staffList).forEach(st=>{m[st]={cash:0,xfer:0};});
-    filt.forEach(c=>{if(!m[c.staff])m[c.staff]={cash:0,xfer:0};if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;});
+    const filt=(cases||[]).filter(c=>c.date.startsWith(month));
+    const m={};names.forEach(st=>m[st]={cash:0,xfer:0});
+    filt.forEach(c=>{
+      if(!m[c.staff])m[c.staff]={cash:0,xfer:0};
+      if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;
+    });
     return m;
   },[month,cases,staffList]);
 
-  const stSales=useMemo(()=>{const m={};stNames(staffList).forEach(st=>{m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0);});return m;},[cleanBySt,caseBySt,staffList]);
-  const total=stNames(staffList).reduce((s,st)=>s+(stSales[st]||0),0);
-  // 控除対象スタッフのみで按分計算
-  const taxTargetNames=stNames(staffList).filter(st=>stTaxTarget(staffList,st));
+  const stSales=useMemo(()=>{
+    const m={};
+    names.forEach(st=>m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0));
+    return m;
+  },[cleanBySt,caseBySt,staffList]);
+
+  const total=names.reduce((s,st)=>s+(stSales[st]||0),0);
+  const cleanTotal=names.reduce((s,st)=>s+(cleanBySt[st]||0),0);
+  const cashT=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
+  const caseXfer=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0);
+  const xferT=caseXfer+cleanTotal;
+
+  const taxTargetNames=names.filter(st=>isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st));
   const taxTargetTotal=taxTargetNames.reduce((s,st)=>s+(stSales[st]||0),0);
-  const cleanTotal=staffList.reduce((s,st)=>s+(cleanBySt[st]||0),0);
-  const cashT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
-  // 振込 = 案件振込 + 日常清掃（全部振込扱い）
-  const xferT=cases.filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0) + cleanTotal;
+
   const fixPct=total>0?(loc.fixedCost/total*100).toFixed(1):0;
   const taxAmt=Math.round(total*loc.taxRate/100);
   const deduct=loc.fixedCost+taxAmt;
   const remain=total-deduct;
   const remPct=total>0?(remain/total*100).toFixed(1):0;
+
   const salaries=useMemo(()=>{
     const m={};
-    stNames(staffList).forEach(st=>{
-      if(stTaxTarget(staffList,st)){
-        m[st]=taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):0;
-      } else {
-        m[st]=null; // 控除対象外
-      }
+    names.forEach(st=>{
+      const isTarget=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);
+      m[st]=isTarget&&taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):null;
     });
     return m;
   },[remain,stSales,taxTargetTotal,staffList]);
@@ -445,11 +425,13 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
       <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
         <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-          {stNames(staffList).map(st=>(
+          {names.map(st=>(
             <div key={st} style={S.closingCard}>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div>
               <div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>清掃 {yen(cleanBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>
+                清掃 {yen(cleanBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}
+              </div>
             </div>
           ))}
         </div>
@@ -457,20 +439,23 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
           <div>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div>
             <b>{yen(xferT)}</b>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(xferT-cleanTotal)}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(caseXfer)}</div>
           </div>
           <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金（案件）</div><b>{yen(cashT)}</b></div>
           <div style={{marginLeft:"auto"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>月売上合計</div><b style={{fontSize:22}}>{yen(total)}</b></div>
         </div>
       </div>
+
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>控除設定</div>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
           <FR label="固定費（円）"><NumInput value={loc.fixedCost} onCommit={v=>setLoc({...loc,fixedCost:v})} style={{width:130}}/></FR>
           <FR label="税貯金率（%）"><NumInput value={loc.taxRate} onCommit={v=>setLoc({...loc,taxRate:v})} style={{width:90}}/></FR>
         </div>
-        <button style={{...S.saveBtn,width:"auto",padding:"8px 20px",fontSize:13}} onClick={async()=>{await saveCfg(loc);showToast("✅ 設定を保存しました");}}>保存</button>
+        <button style={{...S.saveBtn,width:"auto",padding:"8px 20px",fontSize:13}}
+          onClick={async()=>{await saveCfg(loc);showToast("✅ 設定を保存しました");}}>保存</button>
       </div>
+
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>控除内訳</div>
         <DRow label="固定費" note={fixPct+"%"} amt={loc.fixedCost}/>
@@ -484,13 +469,14 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
           <span style={{fontWeight:700,color:"#2d6a4f",fontSize:18}}>{yen(remain)}</span>
         </div>
       </div>
+
       <div style={S.card}>
         <div style={S.sTitle}>給与按分（売上比率で自動計算）</div>
-        {stNames(staffList).map(st=>{
-          const isTarget = stTaxTarget(staffList,st);
-          const ratio=taxTargetTotal>0&&isTarget?((stSales[st]||0)/taxTargetTotal*100).toFixed(1):0;
+        {names.map(st=>{
+          const isTarget=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);
+          const ratio=isTarget&&taxTargetTotal>0?((stSales[st]||0)/taxTargetTotal*100).toFixed(1):0;
           return (
-            <div key={st} style={{marginBottom:14,opacity:isTarget?1:0.7}}>
+            <div key={st} style={{marginBottom:14,opacity:isTarget?1:0.75}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontWeight:700}}>👤 {st}給与</span>
@@ -498,19 +484,22 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
                 </div>
                 <div style={{textAlign:"right"}}>
                   {isTarget
-                    ? <><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
-                        <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>
-                    : <span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>
+                    ?<><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
+                       <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>
+                    :<span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>
                   }
                 </div>
               </div>
               {isTarget&&<div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>}
-              <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
+              <div style={{fontSize:10,color:"#aaa",marginTop:3}}>
+                清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}
+              </div>
             </div>
           );
         })}
         <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}>
-          <b>給与合計（按分対象）</b><b>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b>
+          <b>給与合計（按分対象）</b>
+          <b style={{color:"#2d6a4f"}}>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b>
         </div>
         <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む　※山辺ボーナスはねこのて給与から支払い</p>
       </div>
@@ -521,16 +510,22 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
 // 設定タブ
 function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}) {
   const [lProps,setLProps]=useState(props); useEffect(()=>setLProps(props),[props]);
-  const [lStaff,setLStaff]=useState(staffList.map(s=>typeof s==="string"?{name:s,taxTarget:true}:s)); 
-  useEffect(()=>setLStaff(staffList.map(s=>typeof s==="string"?{name:s,taxTarget:true}:s)),[staffList]);
+  const [lStaff,setLStaff]=useState(staffList.map(toStaffObj)); useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg); useEffect(()=>setLCfg(cfg),[cfg]);
+
   const updProp=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:k==="name"?v:Number(v)}:p));
   const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
-  const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
   const updStaffName=(i,v)=>{const a=[...lStaff];a[i]={...a[i],name:v};setLStaff(a);};
-  const toggleTaxTarget=(i)=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
-  const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
+  const toggleTax=(i)=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
+  const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
+  const saveAll=async()=>{
+    await saveProps(lProps);
+    await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));
+    await saveCfg(lCfg);
+    showToast("✅ 保存しました");
+  };
+
   return (
     <div style={{animation:"fadeUp .3s ease"}}>
       <div style={{...S.card,marginBottom:12}}>
@@ -540,22 +535,22 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
             <input type="text" value={s.name||""} onChange={e=>updStaffName(i,e.target.value)} placeholder="スタッフ名" style={{flex:1}}/>
             <div style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
               <span style={{fontSize:11,color:"#888"}}>控除対象</span>
-              <button onClick={()=>toggleTaxTarget(i)} style={{
-                width:42,height:24,borderRadius:12,border:"none",cursor:"pointer",
-                background:s.taxTarget!==false?"#2d6a4f":"#ccc",
-                position:"relative",transition:"background .2s"
+              <div onClick={()=>toggleTax(i)} style={{
+                width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",
+                background:s.taxTarget!==false?"#2d6a4f":"#ccc",transition:"background .2s"
               }}>
-                <span style={{
+                <div style={{
                   position:"absolute",top:3,left:s.taxTarget!==false?20:3,
                   width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"
                 }}/>
-              </button>
+              </div>
             </div>
             <button style={{...S.iconBtn,color:"#e74c3c",fontSize:16}} onClick={()=>delStaff(i)}>✕</button>
           </div>
         ))}
         <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,{name:"",taxTarget:true}])}>＋ スタッフを追加</button>
       </div>
+
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>🏠 物件マスタ（デフォルト月回数）</div>
         <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
@@ -576,25 +571,28 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
         </div>
         <button style={{...S.cancelBtn,marginTop:10}} onClick={addProp}>＋ 物件を追加</button>
       </div>
+
       <div style={{...S.card,marginBottom:12}}>
         <div style={S.sTitle}>⚙️ 固定設定</div>
         <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
         <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
       </div>
+
       <button style={S.saveBtn} onClick={saveAll}>💾 すべて保存</button>
-      <PwChangeCard password={password} savePassword={savePassword} showToast={showToast}/>
+
+      <PwCard password={password} savePassword={savePassword} showToast={showToast}/>
     </div>
   );
 }
 
-function PwChangeCard({password,savePassword,showToast}) {
-  const [cur,setCur]=useState(""); const [next,setNext]=useState(""); const [confirm,setConfirm]=useState("");
-  const change = async () => {
-    if(cur !== password){showToast("⚠ 現在のパスワードが違います");return;}
+function PwCard({password,savePassword,showToast}) {
+  const [cur,setCur]=useState(""); const [next,setNext]=useState(""); const [conf,setConf]=useState("");
+  const change=async()=>{
+    if(cur!==password){showToast("⚠ 現在のパスワードが違います");return;}
     if(!next){showToast("⚠ 新しいパスワードを入力してください");return;}
-    if(next !== confirm){showToast("⚠ 確認用パスワードが一致しません");return;}
+    if(next!==conf){showToast("⚠ 確認用パスワードが一致しません");return;}
     await savePassword(next);
-    setCur(""); setNext(""); setConfirm("");
+    setCur("");setNext("");setConf("");
     showToast("✅ パスワードを変更しました");
   };
   return (
@@ -602,7 +600,7 @@ function PwChangeCard({password,savePassword,showToast}) {
       <div style={S.sTitle}>🔑 パスワード変更</div>
       <FR label="現在のパスワード"><input type="password" value={cur} onChange={e=>setCur(e.target.value)} placeholder="現在のパスワード"/></FR>
       <FR label="新しいパスワード"><input type="password" value={next} onChange={e=>setNext(e.target.value)} placeholder="新しいパスワード"/></FR>
-      <FR label="新しいパスワード（確認）"><input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="もう一度入力"/></FR>
+      <FR label="新しいパスワード（確認）"><input type="password" value={conf} onChange={e=>setConf(e.target.value)} placeholder="もう一度入力"/></FR>
       <button style={{...S.saveBtn,background:"linear-gradient(135deg,#1a3a6e,#4a6fa5)"}} onClick={change}>🔑 パスワードを変更</button>
     </div>
   );
@@ -617,10 +615,10 @@ const css=`
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#fdf8f5;font-family:'Noto Sans JP',sans-serif;-webkit-tap-highlight-color:transparent}
   input,select,button,textarea{font-family:'Noto Sans JP',sans-serif}
-  input[type=text],input[type=date],input[type=month],select{
+  input[type=text],input[type=date],input[type=month],input[type=password],select{
     border:1.5px solid #e0d0d0;border-radius:8px;padding:7px 10px;
     background:#fff;font-size:13px;color:#333;outline:none;transition:border-color .2s;width:100%}
-  input[type=text]:focus,input[type=date]:focus,select:focus{border-color:#c0392b}
+  input:focus,select:focus{border-color:#c0392b}
   ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#ddd;border-radius:4px}
   table{border-collapse:collapse;width:100%}
   th{background:#fff5f5;font-size:11px;font-weight:700;color:#c44;padding:8px 6px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:2px solid #fcc}
@@ -631,7 +629,6 @@ const css=`
   @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
   @keyframes toastAnim{0%{opacity:0;transform:translateX(-50%) translateY(10px)}15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}100%{opacity:0}}
 `;
-
 const S={
   loginBg:{minHeight:"100vh",background:"radial-gradient(ellipse at 50% 40%,#3a0808,#1a0505)",display:"flex",alignItems:"center",justifyContent:"center"},
   loginCard:{background:"rgba(28,8,8,0.95)",border:"1px solid #551111",borderRadius:20,padding:"44px 36px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,minWidth:300},
