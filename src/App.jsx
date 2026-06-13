@@ -167,7 +167,7 @@ export default function App(){
   const tabs=[
     ["cleaning","🏠 日常清掃"],
     ["cases","📋 案件売上"],
-    ["jobs","🗂 案件管理"+(newCount>0?` 🆕`:``]],
+    ["jobs","🗂 案件管理"+(newCount>0?" 🆕":"")],
     ["customers","👥 顧客"],
     ["closing","📊 月末締め"],
     ["cfg","⚙️ 設定"],
