@@ -361,16 +361,16 @@ function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
       <span style={{fontWeight:700,fontSize:15}}>{y}年{m}月</span>
       <button onClick={next} style={{...S.cancelBtn,padding:"6px 14px"}}>＞</button>
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:2,marginBottom:6}}>
       {WEEKDAYS.map((w,i)=><div key={w} style={{textAlign:"center",fontSize:11,fontWeight:700,color:i===0?"#e03030":i===6?"#1e40af":"#888",padding:"4px 0"}}>{w}</div>)}
       {cells.map((d,i)=>{
         if(!d)return <div key={`e${i}`}/>;
         const ds=String(d).padStart(2,"0");
         const dj=jobsByDate[ds]||[];
         const isToday=todayD===ds&&calMonth===toMonth();
-        return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":"1px solid #f0ece4"}}>
+        return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":"1px solid #f0ece4",overflow:"hidden",minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:isToday?"#e03030":"#333",marginBottom:2}}>{d}</div>
-          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 4px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.client}</div>;})}
+          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};const short=j.client.length>4?j.client.slice(0,4)+"…":j.client;return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 3px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{short}</div>;})}
         </div>;
       })}
     </div>
