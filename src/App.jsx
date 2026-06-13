@@ -2,7 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { dbGet, dbSet } from "./firebase";
 
 const DEFAULT_PASSWORD = "nekono2024";
-const SK = { properties:"props", cases:"cases", cleaning:"clean", settings:"cfg", staff:"staff", monthcnt:"monthcnt", password:"password" };
+const SK = {
+  properties:"props", cases:"cases", cleaning:"clean", settings:"cfg",
+  staff:"staff", monthcnt:"monthcnt", password:"password",
+  jobs:"jobs", customers:"customers"
+};
 const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
   {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
@@ -27,70 +31,67 @@ const DEFAULT_PROPS = [
   {id:20, name:"鞍山コーポ",                 fee:4000,  cnt:2},
 ];
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
+const STATUS_LIST = ["見積済","確定","完了","キャンセル"];
+const STATUS_COLOR = {
+  "見積済":{bg:"#fef9c3",color:"#854d0e",border:"#fde047"},
+  "確定":  {bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},
+  "完了":  {bg:"#dcfce7",color:"#166534",border:"#86efac"},
+  "キャンセル":{bg:"#f3f4f6",color:"#6b7280",border:"#d1d5db"},
+};
+const WEEKDAYS=["日","月","火","水","木","金","土"];
 
-// スタッフヘルパー
-const toStaffObj = s => typeof s === "string" ? {name:s, taxTarget:true} : s;
-const stNames = list => list.map(s => toStaffObj(s).name);
-const isTaxTarget = s => toStaffObj(s).taxTarget !== false;
+const toStaffObj=s=>typeof s==="string"?{name:s,taxTarget:true}:s;
+const stNames=list=>list.map(s=>toStaffObj(s).name);
+const isTaxTarget=s=>toStaffObj(s).taxTarget!==false;
+const yen=n=>"¥"+Math.round(Number(n)||0).toLocaleString();
+const toDay=()=>new Date().toISOString().slice(0,10);
+const toMonth=()=>new Date().toISOString().slice(0,7);
+const nextMo=ym=>{const [y,m]=ym.split("-").map(Number);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;};
+const mcKey=(month,pid)=>`${month}-cnt-${pid}`;
+const cdKey=(month,pid,st)=>`${month}-${pid}-${st}`;
+const stGet=async k=>{try{return await dbGet(k)||null;}catch{return null;}};
+const stSet=async(k,v)=>{try{await dbSet(k,v);}catch{}};
 
-const yen = n => "¥"+Math.round(Number(n)||0).toLocaleString();
-const toDay = () => new Date().toISOString().slice(0,10);
-const toMonth = () => new Date().toISOString().slice(0,7);
-const nextMo = ym => { const [y,m]=ym.split("-").map(Number); return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`; };
-const mcKey = (month,pid) => `${month}-cnt-${pid}`;
-const cdKey = (month,pid,st) => `${month}-${pid}-${st}`;
-
-const stGet = async k => { try { const r=await dbGet(k); return r||null; } catch { return null; } };
-const stSet = async (k,v) => { try { await dbSet(k,v); } catch {} };
-
-// スタッフ売上按分（月額×担当回数÷月回数、合計が担当分の月額に一致）
-function calcStaffSales(fee, monthCnt, staffCounts, names) {
-  if (!monthCnt) return names.map(()=>0);
-  const totalCnt = names.reduce((s,st)=>s+(staffCounts[st]||0),0);
-  if (!totalCnt) return names.map(()=>0);
-  let sales = names.map(st => Math.floor(fee*(staffCounts[st]||0)/monthCnt));
-  const distributed = Math.round(fee*totalCnt/monthCnt);
-  const diff = distributed - sales.reduce((a,b)=>a+b,0);
-  for (let i=names.length-1;i>=0;i--) { if((staffCounts[names[i]]||0)>0){sales[i]+=diff;break;} }
+function calcStaffSales(fee,monthCnt,staffCounts,names){
+  if(!monthCnt)return names.map(()=>0);
+  const totalCnt=names.reduce((s,st)=>s+(staffCounts[st]||0),0);
+  if(!totalCnt)return names.map(()=>0);
+  let sales=names.map(st=>Math.floor(fee*(staffCounts[st]||0)/monthCnt));
+  const distributed=Math.round(fee*totalCnt/monthCnt);
+  const diff=distributed-sales.reduce((a,b)=>a+b,0);
+  for(let i=names.length-1;i>=0;i--){if((staffCounts[names[i]]||0)>0){sales[i]+=diff;break;}}
   return sales;
 }
 
-// 数字入力
-function NumInput({value, onCommit, style, min=0}) {
+function NumInput({value,onCommit,style,min=0}){
   const [local,setLocal]=useState(String(value??""));
   useEffect(()=>setLocal(String(value??"")), [value]);
-  return (
-    <input type="text" inputMode="numeric" value={local}
-      onChange={e=>{if(e.target.value===""||/^-?\d*$/.test(e.target.value))setLocal(e.target.value);}}
-      onBlur={()=>{const n=Math.max(min,Number(local)||0);setLocal(String(n));if(onCommit)onCommit(n);}}
-      onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
-      onFocus={e=>e.target.select()} style={style}/>
-  );
+  return <input type="text" inputMode="numeric" value={local}
+    onChange={e=>{if(e.target.value===""||/^-?\d*$/.test(e.target.value))setLocal(e.target.value);}}
+    onBlur={()=>{const n=Math.max(min,Number(local)||0);setLocal(String(n));if(onCommit)onCommit(n);}}
+    onKeyDown={e=>e.key==="Enter"&&e.target.blur()}
+    onFocus={e=>e.target.select()} style={style}/>;
 }
 
-// ログイン
-function Login({onLogin,password}) {
-  const [pw,setPw]=useState(""); const [err,setErr]=useState(false); const [shake,setShake]=useState(false);
+function Login({onLogin,password}){
+  const [pw,setPw]=useState("");const [err,setErr]=useState(false);const [shake,setShake]=useState(false);
   const go=()=>{if(pw===password)onLogin();else{setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
-  return (
-    <div style={S.loginBg}><style>{css}</style>
-      <div style={{...S.loginCard,animation:shake?"shake .4s":"rise .5s ease"}}>
-        <div style={S.loginIcon}>🐾</div>
-        <div style={S.loginTitle}>便利屋 ねこのて</div>
-        <div style={S.loginSub}>売上管理システム</div>
-        <input style={{...S.loginInput,borderColor:err?"#ff6b6b":"#441111"}} type="password"
-          placeholder="パスワードを入力" value={pw}
-          onChange={e=>{setPw(e.target.value);setErr(false);}}
-          onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
-        {err&&<p style={{color:"#ff6b6b",fontSize:12,marginTop:-4}}>パスワードが違います</p>}
-        <button style={S.loginBtn} onClick={go}>ログイン</button>
-      </div>
+  return <div style={S.loginBg}><style>{css}</style>
+    <div style={{...S.loginCard,animation:shake?"shake .4s":"rise .5s ease"}}>
+      <div style={S.loginIcon}>🐾</div>
+      <div style={S.loginTitle}>便利屋 ねこのて</div>
+      <div style={S.loginSub}>売上管理システム</div>
+      <input style={{...S.loginInput,borderColor:err?"#ff6b6b":"#441111"}} type="password"
+        placeholder="パスワードを入力" value={pw}
+        onChange={e=>{setPw(e.target.value);setErr(false);}}
+        onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
+      {err&&<p style={{color:"#ff6b6b",fontSize:12,marginTop:-4}}>パスワードが違います</p>}
+      <button style={S.loginBtn} onClick={go}>ログイン</button>
     </div>
-  );
+  </div>;
 }
 
-// メインアプリ
-export default function App() {
+export default function App(){
   const [authed,setAuthed]=useState(false);
   const [tab,setTab]=useState("cleaning");
   const [month,setMonth]=useState(toMonth());
@@ -99,511 +100,582 @@ export default function App() {
   const [cleanData,setCleanData]=useState({});
   const [monthCntData,setMonthCntData]=useState({});
   const [cases,setCases]=useState([]);
+  const [jobs,setJobs]=useState([]);
+  const [customers,setCustomers]=useState([]);
   const [cfg,setCfg]=useState(DEFAULT_CFG);
   const [password,setPassword]=useState(DEFAULT_PASSWORD);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
+  const [newCount,setNewCount]=useState(0);
 
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
-  useEffect(()=>{
-    (async()=>{const pw=await stGet(SK.password);if(pw)setPassword(pw);})();
-  },[]);
-
+  useEffect(()=>{(async()=>{const pw=await stGet(SK.password);if(pw)setPassword(pw);})();}, []);
   useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf,mc]=await Promise.all([
-        stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),
-        stGet(SK.settings),stGet(SK.staff),stGet(SK.monthcnt)
+      const [p,cl,ca,c,sf,mc,j,cu]=await Promise.all([
+        stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),stGet(SK.settings),
+        stGet(SK.staff),stGet(SK.monthcnt),stGet(SK.jobs),stGet(SK.customers)
       ]);
-      if(p)setProps(p);
-      if(cl)setCleanData(cl);
-      if(ca)setCases(ca);
-      if(c)setCfg(c);
-      if(sf)setStaffList(sf.map(toStaffObj));
-      if(mc)setMonthCntData(mc);
+      if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca); if(c)setCfg(c);
+      if(sf)setStaffList(sf.map(toStaffObj)); if(mc)setMonthCntData(mc);
+      if(j){setJobs(j);setNewCount((j||[]).filter(x=>x.isNew&&x.status!=="完了"&&x.status!=="キャンセル").length);}
+      if(cu)setCustomers(cu);
       setLoading(false);
     })();
   },[authed]);
 
-  const saveProps    = async v=>{setProps(v);       await stSet(SK.properties,v);};
-  const saveClean    = async v=>{setCleanData(v);   await stSet(SK.cleaning,v);};
-  const saveMonthCnt = async v=>{setMonthCntData(v);await stSet(SK.monthcnt,v);};
-  const saveCases    = async v=>{setCases(v);       await stSet(SK.cases,v);};
-  const saveCfg      = async v=>{setCfg(v);         await stSet(SK.settings,v);};
-  const saveStaff    = async v=>{setStaffList(v);   await stSet(SK.staff,v);};
-  const savePassword = async v=>{setPassword(v);    await stSet(SK.password,v);};
+  const saveProps=async v=>{setProps(v);await stSet(SK.properties,v);};
+  const saveClean=async v=>{setCleanData(v);await stSet(SK.cleaning,v);};
+  const saveMonthCnt=async v=>{setMonthCntData(v);await stSet(SK.monthcnt,v);};
+  const saveCases=async v=>{setCases(v);await stSet(SK.cases,v);};
+  const saveJobs=async v=>{setJobs(v);await stSet(SK.jobs,v);};
+  const saveCustomers=async v=>{setCustomers(v);await stSet(SK.customers,v);};
+  const saveCfg=async v=>{setCfg(v);await stSet(SK.settings,v);};
+  const saveStaff=async v=>{setStaffList(v);await stSet(SK.staff,v);};
+  const savePassword=async v=>{setPassword(v);await stSet(SK.password,v);};
 
   const carryOver=async()=>{
     const nm=nextMo(month);
-    const newClean={...cleanData};
-    const newMc={...monthCntData};
+    const newClean={...cleanData};const newMc={...monthCntData};
     props.forEach(p=>{
       const curCnt=monthCntData[mcKey(month,p.id)]??p.cnt;
       if(!(mcKey(nm,p.id) in newMc))newMc[mcKey(nm,p.id)]=curCnt;
       stNames(staffList).forEach(s=>{const k=cdKey(nm,p.id,s);if(!(k in newClean))newClean[k]=0;});
     });
-    await saveClean(newClean);
-    await saveMonthCnt(newMc);
-    setMonth(nm);
-    showToast(`✅ ${nm} にコピーしました`);
+    await saveClean(newClean);await saveMonthCnt(newMc);setMonth(nm);showToast(`✅ ${nm} にコピーしました`);
+  };
+
+  const completeJob=async(job)=>{
+    if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return;}
+    const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
+    await saveJobs(updated);
+    const nc={id:Date.now(),date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount)};
+    await saveCases([nc,...(cases||[])]);
+    setNewCount(n=>Math.max(0,n-1));
+    showToast("✅ 完了！売上に反映しました");
+  };
+
+  const clearNew=()=>{
+    const updated=(jobs||[]).map(j=>({...j,isNew:false}));
+    saveJobs(updated);setNewCount(0);
   };
 
   if(!authed)return <Login onLogin={()=>setAuthed(true)} password={password}/>;
 
-  const tabs=[["cleaning","🏠 日常清掃"],["cases","📋 案件"],["closing","📊 月末締め"],["cfg","⚙️ 設定"]];
-  return (
-    <div style={S.app}><style>{css}</style>
-      {toast&&<div style={S.toast}>{toast}</div>}
-      <div style={S.header}>
-        <span style={{fontSize:22}}>🐾</span>
-        <div style={{flex:1,marginLeft:10}}>
-          <div style={S.hTitle}>便利屋 ねこのて</div>
-          <div style={S.hSub}>売上管理システム</div>
-        </div>
-        <div style={{textAlign:"right",marginRight:10}}>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:2}}>対象月</div>
-          <input type="month" value={month} onChange={e=>setMonth(e.target.value)}
-            style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",fontSize:13,fontWeight:700,borderRadius:6,padding:"3px 8px",outline:"none",width:"auto"}}/>
-        </div>
-        <button style={S.logoutBtn} onClick={()=>setAuthed(false)}>ログアウト</button>
+  const tabs=[
+    ["cleaning","🏠 日常清掃"],
+    ["cases","📋 案件売上"],
+    ["jobs","🗂 案件管理"+(newCount>0?` 🆕`:``]],
+    ["customers","👥 顧客"],
+    ["closing","📊 月末締め"],
+    ["cfg","⚙️ 設定"],
+  ];
+
+  return <div style={S.app}><style>{css}</style>
+    {toast&&<div style={S.toast}>{toast}</div>}
+    <div style={S.header}>
+      <span style={{fontSize:22}}>🐾</span>
+      <div style={{flex:1,marginLeft:10}}>
+        <div style={S.hTitle}>便利屋 ねこのて</div>
+        <div style={S.hSub}>売上管理システム</div>
       </div>
-      <div style={S.tabs}>
-        {tabs.map(([k,v])=>(
-          <button key={k} style={{...S.tab,...(tab===k?S.tabOn:{})}} onClick={()=>setTab(k)}>{v}</button>
-        ))}
+      <div style={{textAlign:"right",marginRight:10}}>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:2}}>対象月</div>
+        <input type="month" value={month} onChange={e=>setMonth(e.target.value)}
+          style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",fontSize:13,fontWeight:700,borderRadius:6,padding:"3px 8px",outline:"none",width:"auto"}}/>
       </div>
-      <div style={S.body}>
-        {loading?<div style={S.empty}>読み込み中…</div>:<>
-          {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
-          {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
-          {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-          {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
-        </>}
-      </div>
+      <button style={S.logoutBtn} onClick={()=>setAuthed(false)}>ログアウト</button>
     </div>
-  );
+    <div style={S.tabs}>
+      {tabs.map(([k,v])=>(
+        <button key={k} style={{...S.tab,...(tab===k?S.tabOn:{})}} onClick={()=>{setTab(k);if(k==="jobs")clearNew();}}>{v}</button>
+      ))}
+    </div>
+    <div style={S.body}>
+      {loading?<div style={S.empty}>読み込み中…</div>:<>
+        {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
+        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
+        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast}/>}
+        {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
+        {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
+        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
+      </>}
+    </div>
+  </div>;
 }
 
-// 日常清掃タブ
-function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,saveMonthCnt,carryOver}) {
+function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast}){
+  const [view,setView]=useState("list");
+  const [filterStatus,setFilterStatus]=useState("全て");
+  const [showForm,setShowForm]=useState(false);
+  const [editJob,setEditJob]=useState(null);
+  const [calMonth,setCalMonth]=useState(toMonth());
+  const names=stNames(staffList);
+  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:""});
+  const [form,setForm]=useState(blank());
+
+  const filtered=useMemo(()=>{
+    let r=jobs||[];
+    if(filterStatus!=="全て")r=r.filter(j=>j.status===filterStatus);
+    return [...r].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  },[jobs,filterStatus]);
+
+  const openForm=(job=null)=>{
+    if(job){setForm({...job,amount:String(job.amount||"")});setEditJob(job.id);}
+    else{setForm(blank());setEditJob(null);}
+    setShowForm(true);
+  };
+
+  const selectCustomer=name=>{
+    const c=(customers||[]).find(c=>c.name===name);
+    setForm(f=>({...f,client:name,address:c?.address||f.address,phone:c?.phone||f.phone}));
+  };
+
+  const saveJob=async()=>{
+    if(!form.client||!form.content){showToast("⚠ 依頼者・依頼内容は必須");return;}
+    const now=Date.now();
+    if(editJob){
+      await saveJobs((jobs||[]).map(j=>j.id===editJob?{...form,id:editJob,amount:Number(form.amount)||0,updatedAt:now}:j));
+      showToast("✅ 更新しました");
+    }else{
+      const nj={...form,id:now,amount:Number(form.amount)||0,createdAt:now,isNew:true};
+      await saveJobs([nj,...(jobs||[])]);
+      if(form.client){
+        const ex=(customers||[]).find(c=>c.name===form.client);
+        if(!ex)await saveCustomers([...(customers||[]),{id:now,name:form.client,address:form.address,phone:form.phone}]);
+        else if(form.address&&!ex.address)await saveCustomers((customers||[]).map(c=>c.name===form.client?{...c,address:form.address,phone:form.phone}:c));
+      }
+      showToast("✅ 案件を追加しました！");
+    }
+    setShowForm(false);setEditJob(null);setForm(blank());
+  };
+
+  const deleteJob=async id=>{if(!confirm("削除しますか？"))return;await saveJobs((jobs||[]).filter(j=>j.id!==id));showToast("🗑 削除しました");};
+  const changeStatus=async(job,status)=>{
+    if(status==="完了"){await completeJob({...job,amount:Number(job.amount)||0});return;}
+    await saveJobs((jobs||[]).map(j=>j.id===job.id?{...j,status,isNew:false}:j));
+    showToast(`✅ ${status} に変更しました`);
+  };
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["全て",...STATUS_LIST].map(s=>(
+          <button key={s} onClick={()=>setFilterStatus(s)} style={{
+            padding:"5px 12px",borderRadius:20,border:"1.5px solid",fontSize:11,cursor:"pointer",fontWeight:600,
+            background:filterStatus===s?"#c0392b":"#fff",color:filterStatus===s?"#fff":"#888",borderColor:filterStatus===s?"#c0392b":"#ddd"
+          }}>{s}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,marginLeft:"auto"}}>
+        <button onClick={()=>setView(v=>v==="list"?"calendar":"list")} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>
+          {view==="list"?"📅 カレンダー":"📋 リスト"}
+        </button>
+        <button onClick={()=>openForm()} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 追加</button>
+      </div>
+    </div>
+
+    {view==="calendar"&&<CalendarView jobs={jobs||[]} calMonth={calMonth} setCalMonth={setCalMonth} onClickJob={openForm}/>}
+
+    {view==="list"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {filtered.length===0?<div style={S.empty}>案件がありません</div>:filtered.map(job=>{
+        const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
+        return <div key={job.id} style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 2px 8px rgba(180,0,0,0.07)",borderLeft:`4px solid ${sc.border}`,position:"relative"}}>
+          {job.isNew&&job.status!=="完了"&&job.status!=="キャンセル"&&
+            <span style={{position:"absolute",top:10,right:10,background:"#e03030",color:"#fff",fontSize:10,fontWeight:700,borderRadius:6,padding:"2px 6px"}}>🆕 NEW</span>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14}}>{job.client}</div>
+              <div style={{fontSize:12,color:"#666",marginTop:2}}>{job.content}</div>
+            </div>
+            <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700,flexShrink:0,marginLeft:8}}>{job.status}</span>
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:11,color:"#888",marginBottom:10}}>
+            {job.workDate&&<span>📅 {job.workDate}</span>}
+            {job.staff&&<span>👤 {job.staff}</span>}
+            {job.address&&<span>📍 {job.address.length>16?job.address.slice(0,16)+"…":job.address}</span>}
+            {job.phone&&<a href={`tel:${job.phone}`} style={{color:"#c0392b",textDecoration:"none"}}>📞 {job.phone}</a>}
+            {job.amount>0&&<span style={{color:"#2d6a4f",fontWeight:700}}>¥{Number(job.amount).toLocaleString()}</span>}
+          </div>
+          {job.memo&&<div style={{fontSize:11,color:"#999",background:"#faf8f5",borderRadius:8,padding:"6px 10px",marginBottom:10}}>{job.memo}</div>}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <button onClick={()=>openForm(job)} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11,flex:1}}>✏️ 編集</button>
+            {job.status==="見積済"&&<button onClick={()=>changeStatus(job,"確定")} style={{flex:1,padding:"6px 0",background:"#dbeafe",border:"1.5px solid #93c5fd",borderRadius:8,fontSize:11,cursor:"pointer",color:"#1e40af",fontWeight:700}}>📋 確定にする</button>}
+            {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{flex:1,padding:"6px 0",background:"#dcfce7",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,cursor:"pointer",color:"#166534",fontWeight:700}}>✅ 完了→売上反映</button>}
+            {job.status==="完了"&&<div style={{flex:1,padding:"6px 0",background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,color:"#166534",fontWeight:700,textAlign:"center"}}>💰 売上反映済</div>}
+            <button onClick={()=>deleteJob(job.id)} style={{padding:"6px 10px",background:"none",border:"1.5px solid #eee",borderRadius:8,fontSize:11,cursor:"pointer",color:"#ccc"}}>✕</button>
+          </div>
+        </div>;
+      })}
+    </div>}
+
+    {showForm&&<div style={S.modalBg} onClick={()=>setShowForm(false)}>
+      <div style={S.modal} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>{editJob?"✏️ 案件を編集":"➕ 案件を追加"}</div>
+        <FR label="依頼者">
+          <input type="text" value={form.client} onChange={e=>{setForm({...form,client:e.target.value});selectCustomer(e.target.value);}} placeholder="鳥井さん" list="clist"/>
+          <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+        </FR>
+        <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
+          <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})}/></FR>
+          <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+          <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
+          <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})}><option>振込</option><option>現金</option></select></FR>
+        </div>
+        <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="確定後に入力"/></FR>
+        <FR label="現場住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
+        <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
+        <FR label="メモ"><textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          <button style={S.cancelBtn} onClick={()=>setShowForm(false)}>キャンセル</button>
+          <button style={S.saveBtn} onClick={saveJob}>{editJob?"更新":"保存"}</button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
+  const [y,m]=calMonth.split("-").map(Number);
+  const firstDay=new Date(y,m-1,1).getDay();
+  const daysInMonth=new Date(y,m,0).getDate();
+  const prev=()=>setCalMonth(m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,"0")}`);
+  const next=()=>setCalMonth(m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`);
+  const jobsByDate=useMemo(()=>{
+    const map={};
+    (jobs||[]).filter(j=>j.workDate&&j.workDate.startsWith(calMonth)).forEach(j=>{
+      const d=j.workDate.slice(8,10);if(!map[d])map[d]=[];map[d].push(j);
+    });
+    return map;
+  },[jobs,calMonth]);
+  const cells=[];
+  for(let i=0;i<firstDay;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+  const todayD=toDay().slice(8,10);
+  return <div style={{...S.card,marginBottom:12}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <button onClick={prev} style={{...S.cancelBtn,padding:"6px 14px"}}>＜</button>
+      <span style={{fontWeight:700,fontSize:15}}>{y}年{m}月</span>
+      <button onClick={next} style={{...S.cancelBtn,padding:"6px 14px"}}>＞</button>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+      {WEEKDAYS.map((w,i)=><div key={w} style={{textAlign:"center",fontSize:11,fontWeight:700,color:i===0?"#e03030":i===6?"#1e40af":"#888",padding:"4px 0"}}>{w}</div>)}
+      {cells.map((d,i)=>{
+        if(!d)return <div key={`e${i}`}/>;
+        const ds=String(d).padStart(2,"0");
+        const dj=jobsByDate[ds]||[];
+        const isToday=todayD===ds&&calMonth===toMonth();
+        return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":"1px solid #f0ece4"}}>
+          <div style={{fontSize:11,fontWeight:700,color:isToday?"#e03030":"#333",marginBottom:2}}>{d}</div>
+          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 4px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.client}</div>;})}
+        </div>;
+      })}
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      {STATUS_LIST.map(s=>{const sc=STATUS_COLOR[s];return <span key={s} style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 8px",fontSize:10}}>{s}</span>;})}
+    </div>
+  </div>;
+}
+
+function CustomersTab({customers,saveCustomers,jobs,showToast}){
+  const [selected,setSelected]=useState(null);
+  const [editMode,setEditMode]=useState(false);
+  const [form,setForm]=useState({name:"",address:"",phone:""});
+  const custJobs=useMemo(()=>{if(!selected)return[];return (jobs||[]).filter(j=>j.client===selected.name).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));},[selected,jobs]);
+  const saveEdit=async()=>{
+    if(!form.name){showToast("⚠ 顧客名は必須");return;}
+    if(selected)await saveCustomers((customers||[]).map(c=>c.id===selected.id?{...c,...form}:c));
+    else await saveCustomers([...(customers||[]),{id:Date.now(),...form}]);
+    setEditMode(false);setSelected(null);showToast("✅ 保存しました");
+  };
+  const del=async id=>{if(!confirm("削除しますか？"))return;await saveCustomers((customers||[]).filter(c=>c.id!==id));setSelected(null);showToast("🗑 削除しました");};
+
+  if(editMode)return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={S.card}>
+      <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>{selected?"✏️ 顧客を編集":"➕ 顧客を追加"}</div>
+      <FR label="顧客名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="鳥井さん"/></FR>
+      <FR label="住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
+      <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
+      <div style={{display:"flex",gap:8,marginTop:4}}><button style={S.cancelBtn} onClick={()=>setEditMode(false)}>キャンセル</button><button style={S.saveBtn} onClick={saveEdit}>保存</button></div>
+    </div>
+  </div>;
+
+  if(selected)return <div style={{animation:"fadeUp .3s ease"}}>
+    <button onClick={()=>setSelected(null)} style={{...S.cancelBtn,marginBottom:12,fontSize:12}}>← 一覧に戻る</button>
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:18}}>{selected.name}</div>
+          {selected.address&&<div style={{fontSize:12,color:"#888",marginTop:4}}>📍 {selected.address}</div>}
+          {selected.phone&&<a href={`tel:${selected.phone}`} style={{display:"block",fontSize:12,color:"#c0392b",marginTop:4,textDecoration:"none"}}>📞 {selected.phone}</a>}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setForm({name:selected.name,address:selected.address||"",phone:selected.phone||""});setEditMode(true);}} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>✏️</button>
+          <button onClick={()=>del(selected.id)} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11,color:"#e74c3c"}}>✕</button>
+        </div>
+      </div>
+    </div>
+    <div style={S.sTitle}>📋 案件履歴（{custJobs.length}件）</div>
+    {custJobs.length===0?<div style={S.empty}>案件履歴がありません</div>:custJobs.map(j=>{
+      const sc=STATUS_COLOR[j.status]||{};
+      return <div key={j.id} style={{...S.card,marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+          <span style={{fontWeight:600,fontSize:13}}>{j.content}</span>
+          <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{j.status}</span>
+        </div>
+        <div style={{display:"flex",gap:10,fontSize:11,color:"#888",flexWrap:"wrap"}}>
+          {j.workDate&&<span>📅 {j.workDate}</span>}
+          {j.staff&&<span>👤 {j.staff}</span>}
+          {j.amount>0&&<span style={{color:"#2d6a4f",fontWeight:700}}>¥{Number(j.amount).toLocaleString()}</span>}
+        </div>
+        {j.memo&&<div style={{fontSize:11,color:"#999",marginTop:6}}>{j.memo}</div>}
+      </div>;
+    })}
+  </div>;
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{fontSize:13,color:"#888"}}>{(customers||[]).length}件の顧客</div>
+      <button onClick={()=>{setSelected(null);setForm({name:"",address:"",phone:""});setEditMode(true);}} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 顧客を追加</button>
+    </div>
+    {(customers||[]).length===0?<div style={S.empty}>顧客データがありません<br/><span style={{fontSize:11}}>案件管理で案件を追加すると自動で登録されます</span></div>
+    :(customers||[]).map(c=>{
+      const cj=(jobs||[]).filter(j=>j.client===c.name);
+      const lj=cj.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
+      return <div key={c.id} onClick={()=>setSelected(c)} style={{...S.card,cursor:"pointer",marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+            {c.phone&&<a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#c0392b",textDecoration:"none"}}>📞 {c.phone}</a>}
+            {c.address&&<div style={{fontSize:11,color:"#888",marginTop:2}}>📍 {c.address.length>20?c.address.slice(0,20)+"…":c.address}</div>}
+          </div>
+          <div style={{textAlign:"right",fontSize:11,color:"#aaa"}}>
+            <div>案件 {cj.length}件</div>
+            {lj&&<div>最終: {lj.workDate||"日付なし"}</div>}
+          </div>
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,saveMonthCnt,carryOver}){
   const names=stNames(staffList);
   const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
   const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
   const setMc=useCallback(async(pid,num)=>{await saveMonthCnt({...monthCntData,[mcKey(month,pid)]:num});},[month,monthCntData,saveMonthCnt]);
   const setC=useCallback(async(pid,st,num)=>{await saveClean({...cleanData,[cdKey(month,pid,st)]:num});},[month,cleanData,saveClean]);
-
-  const getPropSales=useCallback(p=>{
-    const mc=getMc(p.id);
-    const counts={};
-    names.forEach(st=>counts[st]=getC(p.id,st));
-    return calcStaffSales(p.fee,mc,counts,names);
-  },[month,props,staffList,cleanData,monthCntData]);
-
+  const getPropSales=useCallback(p=>{const mc=getMc(p.id);const counts={};names.forEach(st=>counts[st]=getC(p.id,st));return calcStaffSales(p.fee,mc,counts,names);},[month,props,staffList,cleanData,monthCntData]);
   const stTotal=st=>props.reduce((s,p)=>{const sales=getPropSales(p);return s+(sales[names.indexOf(st)]||0);},0);
   const grand=names.reduce((s,st)=>s+stTotal(st),0);
-
-  return (
-    <div style={{animation:"fadeUp .3s ease"}}>
-      <div style={S.ctrlRow}>
-        <button style={S.redBtn} onClick={carryOver}>📋 翌月コピー</button>
-      </div>
-      <div style={S.staffBar}>
-        {names.map(st=>(
-          <div key={st} style={S.staffCell}>
-            <div style={S.staffLabel}>{st}</div>
-            <div style={S.staffAmt}>{yen(stTotal(st))}</div>
-          </div>
-        ))}
-        <div style={{...S.staffCell,background:"#c0392b",border:"none"}}>
-          <div style={{...S.staffLabel,color:"rgba(255,255,255,0.7)"}}>合計</div>
-          <div style={{...S.staffAmt,color:"#fff"}}>{yen(grand)}</div>
-        </div>
-      </div>
-      <div style={S.tableWrap}>
-        <table>
-          <thead>
-            <tr>
-              <th style={{textAlign:"left",minWidth:110}}>物件名</th>
-              <th>月額</th>
-              <th>月回数<br/><span style={{fontSize:9,color:"#f88"}}>今月</span></th>
-              {names.map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
-              {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
-              <th>物件計</th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.map(p=>{
-              const mc=getMc(p.id);
-              const sales=getPropSales(p);
-              const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
-              const propTotal=sales.reduce((a,b)=>a+b,0);
-              return (
-                <tr key={p.id}>
-                  <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>{p.name}</td>
-                  <td>{yen(p.fee)}</td>
-                  <td><NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
-                  {names.map(st=>(
-                    <td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
-                  ))}
-                  {sales.map((s,i)=>(
-                    <td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>
-                  ))}
-                  <td style={{fontWeight:700,color:totalCnt===mc&&mc>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{background:"#fff5f5"}}>
-              <td style={{textAlign:"left",fontWeight:700}} colSpan={3}>合計</td>
-              {names.map(st=><td key={st}/>)}
-              {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
-              <td style={{fontWeight:700}}>{yen(grand)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <p style={{fontSize:10,color:"#aaa",marginTop:8,textAlign:"center"}}>物件計が緑色＝担当回数合計が月回数と一致</p>
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={S.ctrlRow}><button style={S.redBtn} onClick={carryOver}>📋 翌月コピー</button></div>
+    <div style={S.staffBar}>
+      {names.map(st=><div key={st} style={S.staffCell}><div style={S.staffLabel}>{st}</div><div style={S.staffAmt}>{yen(stTotal(st))}</div></div>)}
+      <div style={{...S.staffCell,background:"#c0392b",border:"none"}}><div style={{...S.staffLabel,color:"rgba(255,255,255,0.7)"}}>合計</div><div style={{...S.staffAmt,color:"#fff"}}>{yen(grand)}</div></div>
     </div>
-  );
+    <div style={S.tableWrap}><table>
+      <thead><tr>
+        <th style={{textAlign:"left",minWidth:110}}>物件名</th><th>月額</th><th>月回数</th>
+        {names.map(st=><th key={st} style={{color:"#c44"}}>{st}<br/>回数</th>)}
+        {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
+        <th>物件計</th>
+      </tr></thead>
+      <tbody>{props.map(p=>{
+        const mc=getMc(p.id);const sales=getPropSales(p);
+        const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
+        const propTotal=sales.reduce((a,b)=>a+b,0);
+        return <tr key={p.id}>
+          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>{p.name}</td>
+          <td>{yen(p.fee)}</td>
+          <td><NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
+          {names.map(st=><td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>)}
+          {sales.map((s,i)=><td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>)}
+          <td style={{fontWeight:700,color:totalCnt===mc&&mc>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
+        </tr>;
+      })}</tbody>
+      <tfoot><tr style={{background:"#fff5f5"}}>
+        <td style={{textAlign:"left",fontWeight:700}} colSpan={3}>合計</td>
+        {names.map(st=><td key={st}/>)}
+        {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#c44"}}>{yen(stTotal(st))}</td>)}
+        <td style={{fontWeight:700}}>{yen(grand)}</td>
+      </tr></tfoot>
+    </table></div>
+  </div>;
 }
 
-// 案件タブ
-function CasesTab({month,cases,staffList,saveCases,showToast}) {
+function CasesTab({month,cases,staffList,saveCases,showToast}){
   const names=stNames(staffList);
   const blank=()=>({date:toDay(),name:"",staff:names[0]||"",payment:"現金",amount:""});
-  const [form,setForm]=useState(blank());
-  const [editId,setEditId]=useState(null);
-
-  const filtered=useMemo(()=>
-    (cases||[]).filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),
-    [cases,month]
-  );
+  const [form,setForm]=useState(blank());const [editId,setEditId]=useState(null);
+  const filtered=useMemo(()=>(cases||[]).filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),[cases,month]);
   const total=filtered.reduce((s,c)=>s+c.amount,0);
   const cashT=filtered.filter(c=>c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const xferT=filtered.filter(c=>c.payment==="振込").reduce((s,c)=>s+c.amount,0);
-
   const handleSave=async()=>{
     if(!form.date||!form.name||!form.amount){showToast("⚠ 日付・名前・金額は必須");return;}
-    const amt=Number(form.amount);if(!amt){showToast("⚠ 金額を入力してください");return;}
-    if(editId){
-      await saveCases((cases||[]).map(c=>c.id===editId?{...form,id:editId,amount:amt}:c));
-      setEditId(null);showToast("✅ 更新しました");
-    } else {
-      await saveCases([{...form,id:Date.now(),amount:amt},...(cases||[])]);
-      showToast("✅ 保存しました");
-    }
+    const amt=Number(form.amount);if(!amt){showToast("⚠ 金額を入力");return;}
+    if(editId){await saveCases((cases||[]).map(c=>c.id===editId?{...form,id:editId,amount:amt}:c));setEditId(null);showToast("✅ 更新");}
+    else{await saveCases([{...form,id:Date.now(),amount:amt},...(cases||[])]);showToast("✅ 保存");}
     setForm(blank());
   };
   const startEdit=c=>{setForm({...c,amount:String(c.amount)});setEditId(c.id);};
-  const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除しました");};
-
-  return (
-    <div style={{animation:"fadeUp .3s ease"}}>
-      <div style={S.pills}>
-        <Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/>
+  const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除");};
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
+    <div style={S.formCard}>
+      <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
+        <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
+        <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
+        <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+        <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
+        <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="15000" style={{width:"100%"}}/></FR>
       </div>
-      <div style={S.formCard}>
-        <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件を追加"}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-          <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
-          <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
-          <FR label="担当">
-            <select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>
-              {names.map(s=><option key={s}>{s}</option>)}
-            </select>
-          </FR>
-          <FR label="支払">
-            <div style={{display:"flex",gap:8}}>
-              {["現金","振込"].map(p=>(
-                <button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>
-                  {p==="現金"?"💴 現金":"🏦 振込"}
-                </button>
-              ))}
-            </div>
-          </FR>
-          <FR label="金額（円）">
-            <input type="text" inputMode="numeric" value={form.amount}
-              onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}}
-              onFocus={e=>e.target.select()} placeholder="15000" style={{width:"100%"}}/>
-          </FR>
-        </div>
-        <div style={{display:"flex",gap:8,marginTop:4}}>
-          {editId&&<button style={S.cancelBtn} onClick={()=>{setEditId(null);setForm(blank());}}>キャンセル</button>}
-          <button style={S.saveBtn} onClick={handleSave}>{editId?"更新":"保存"}</button>
-        </div>
-      </div>
-      <div style={S.tableWrap}>
-        {filtered.length===0?<div style={S.empty}>この月の案件はありません</div>:(
-          <table>
-            <thead><tr><th>日付</th><th>案件名</th><th>担当</th><th>支払</th><th>金額</th><th></th></tr></thead>
-            <tbody>
-              {filtered.map(c=>(
-                <tr key={c.id}>
-                  <td style={{whiteSpace:"nowrap"}}>{c.date}</td>
-                  <td style={{textAlign:"left"}}>{c.name}</td>
-                  <td>{c.staff}</td>
-                  <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment}</span></td>
-                  <td style={{fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
-                  <td>
-                    <button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button>
-                    <button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        {editId&&<button style={S.cancelBtn} onClick={()=>{setEditId(null);setForm(blank());}}>キャンセル</button>}
+        <button style={S.saveBtn} onClick={handleSave}>{editId?"更新":"保存"}</button>
       </div>
     </div>
-  );
+    <div style={S.tableWrap}>
+      {filtered.length===0?<div style={S.empty}>この月の案件はありません</div>:
+      <table><thead><tr><th>日付</th><th>案件名</th><th>担当</th><th>支払</th><th>金額</th><th></th></tr></thead>
+      <tbody>{filtered.map(c=><tr key={c.id}>
+        <td style={{whiteSpace:"nowrap"}}>{c.date}</td><td style={{textAlign:"left"}}>{c.name}</td><td>{c.staff}</td>
+        <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment}</span></td>
+        <td style={{fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
+        <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
+      </tr>)}</tbody></table>}
+    </div>
+  </div>;
 }
 
-// 月末締めタブ
-function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,saveCfg,showToast}) {
-  const [loc,setLoc]=useState(cfg);
-  useEffect(()=>setLoc(cfg),[cfg]);
+function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,saveCfg,showToast}){
+  const [loc,setLoc]=useState(cfg);useEffect(()=>setLoc(cfg),[cfg]);
   const names=stNames(staffList);
-
   const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
   const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
-
-  const cleanBySt=useMemo(()=>{
-    const m={};names.forEach(st=>m[st]=0);
-    props.forEach(p=>{
-      const counts={};names.forEach(st=>counts[st]=getC(p.id,st));
-      const sales=calcStaffSales(p.fee,getMc(p.id),counts,names);
-      names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);
-    });
-    return m;
-  },[month,props,cleanData,monthCntData,staffList]);
-
-  const caseBySt=useMemo(()=>{
-    const filt=(cases||[]).filter(c=>c.date.startsWith(month));
-    const m={};names.forEach(st=>m[st]={cash:0,xfer:0});
-    filt.forEach(c=>{
-      if(!m[c.staff])m[c.staff]={cash:0,xfer:0};
-      if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;
-    });
-    return m;
-  },[month,cases,staffList]);
-
-  const stSales=useMemo(()=>{
-    const m={};
-    names.forEach(st=>m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0));
-    return m;
-  },[cleanBySt,caseBySt,staffList]);
-
+  const cleanBySt=useMemo(()=>{const m={};names.forEach(st=>m[st]=0);props.forEach(p=>{const counts={};names.forEach(st=>counts[st]=getC(p.id,st));const sales=calcStaffSales(p.fee,getMc(p.id),counts,names);names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);});return m;},[month,props,cleanData,monthCntData,staffList]);
+  const caseBySt=useMemo(()=>{const filt=(cases||[]).filter(c=>c.date.startsWith(month));const m={};names.forEach(st=>m[st]={cash:0,xfer:0});filt.forEach(c=>{if(!m[c.staff])m[c.staff]={cash:0,xfer:0};if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;});return m;},[month,cases,staffList]);
+  const stSales=useMemo(()=>{const m={};names.forEach(st=>m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0));return m;},[cleanBySt,caseBySt,staffList]);
   const total=names.reduce((s,st)=>s+(stSales[st]||0),0);
   const cleanTotal=names.reduce((s,st)=>s+(cleanBySt[st]||0),0);
   const cashT=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const caseXfer=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0);
   const xferT=caseXfer+cleanTotal;
-
   const taxTargetNames=names.filter(st=>isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st));
   const taxTargetTotal=taxTargetNames.reduce((s,st)=>s+(stSales[st]||0),0);
-
   const fixPct=total>0?(loc.fixedCost/total*100).toFixed(1):0;
   const taxAmt=Math.round(total*loc.taxRate/100);
   const deduct=loc.fixedCost+taxAmt;
   const remain=total-deduct;
   const remPct=total>0?(remain/total*100).toFixed(1):0;
-
-  const salaries=useMemo(()=>{
-    const m={};
-    names.forEach(st=>{
-      const isTarget=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);
-      m[st]=isTarget&&taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):null;
-    });
-    return m;
-  },[remain,stSales,taxTargetTotal,staffList]);
-
-  return (
-    <div style={{animation:"fadeUp .3s ease"}}>
-      <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-          {names.map(st=>(
-            <div key={st} style={S.closingCard}>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div>
-              <div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>
-                清掃 {yen(cleanBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div>
-            <b>{yen(xferT)}</b>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(caseXfer)}</div>
-          </div>
-          <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金（案件）</div><b>{yen(cashT)}</b></div>
-          <div style={{marginLeft:"auto"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>月売上合計</div><b style={{fontSize:22}}>{yen(total)}</b></div>
-        </div>
+  const salaries=useMemo(()=>{const m={};names.forEach(st=>{const isT=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);m[st]=isT&&taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):null;});return m;},[remain,stSales,taxTargetTotal,staffList]);
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        {names.map(st=><div key={st} style={S.closingCard}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div><div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div><div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>清掃 {yen(cleanBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}</div></div>)}
       </div>
-
-      <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>控除設定</div>
-        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
-          <FR label="固定費（円）"><NumInput value={loc.fixedCost} onCommit={v=>setLoc({...loc,fixedCost:v})} style={{width:130}}/></FR>
-          <FR label="税貯金率（%）"><NumInput value={loc.taxRate} onCommit={v=>setLoc({...loc,taxRate:v})} style={{width:90}}/></FR>
-        </div>
-        <button style={{...S.saveBtn,width:"auto",padding:"8px 20px",fontSize:13}}
-          onClick={async()=>{await saveCfg(loc);showToast("✅ 設定を保存しました");}}>保存</button>
-      </div>
-
-      <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>控除内訳</div>
-        <DRow label="固定費" note={fixPct+"%"} amt={loc.fixedCost}/>
-        <DRow label="税貯金" note={loc.taxRate+"%"} amt={taxAmt}/>
-        <div style={{borderTop:"2px solid #eee",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between"}}>
-          <b>控除合計（{(Number(fixPct)+Number(loc.taxRate)).toFixed(1)}%）</b>
-          <span style={{color:"#c0392b",fontWeight:700}}>-{yen(deduct)}</span>
-        </div>
-        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginTop:8,display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontWeight:700,color:"#2d6a4f"}}>残額（{remPct}%）</span>
-          <span style={{fontWeight:700,color:"#2d6a4f",fontSize:18}}>{yen(remain)}</span>
-        </div>
-      </div>
-
-      <div style={S.card}>
-        <div style={S.sTitle}>給与按分（売上比率で自動計算）</div>
-        {names.map(st=>{
-          const isTarget=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);
-          const ratio=isTarget&&taxTargetTotal>0?((stSales[st]||0)/taxTargetTotal*100).toFixed(1):0;
-          return (
-            <div key={st} style={{marginBottom:14,opacity:isTarget?1:0.75}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontWeight:700}}>👤 {st}給与</span>
-                  {!isTarget&&<span style={{fontSize:10,background:"#f0ece4",color:"#888",borderRadius:4,padding:"1px 6px"}}>固定費に含む</span>}
-                </div>
-                <div style={{textAlign:"right"}}>
-                  {isTarget
-                    ?<><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span>
-                       <span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>
-                    :<span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>
-                  }
-                </div>
-              </div>
-              {isTarget&&<div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>}
-              <div style={{fontSize:10,color:"#aaa",marginTop:3}}>
-                清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}
-              </div>
-            </div>
-          );
-        })}
-        <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}>
-          <b>給与合計（按分対象）</b>
-          <b style={{color:"#2d6a4f"}}>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b>
-        </div>
-        <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む　※山辺ボーナスはねこのて給与から支払い</p>
+      <div style={{display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10,flexWrap:"wrap"}}>
+        <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div><b>{yen(xferT)}</b><div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(caseXfer)}</div></div>
+        <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金（案件）</div><b>{yen(cashT)}</b></div>
+        <div style={{marginLeft:"auto"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>月売上合計</div><b style={{fontSize:22}}>{yen(total)}</b></div>
       </div>
     </div>
-  );
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>控除設定</div>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10}}>
+        <FR label="固定費（円）"><NumInput value={loc.fixedCost} onCommit={v=>setLoc({...loc,fixedCost:v})} style={{width:130}}/></FR>
+        <FR label="税貯金率（%）"><NumInput value={loc.taxRate} onCommit={v=>setLoc({...loc,taxRate:v})} style={{width:90}}/></FR>
+      </div>
+      <button style={{...S.saveBtn,width:"auto",padding:"8px 20px",fontSize:13}} onClick={async()=>{await saveCfg(loc);showToast("✅ 設定を保存しました");}}>保存</button>
+    </div>
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>控除内訳</div>
+      <DRow label="固定費" note={fixPct+"%"} amt={loc.fixedCost}/>
+      <DRow label="税貯金" note={loc.taxRate+"%"} amt={taxAmt}/>
+      <div style={{borderTop:"2px solid #eee",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between"}}><b>控除合計（{(Number(fixPct)+Number(loc.taxRate)).toFixed(1)}%）</b><span style={{color:"#c0392b",fontWeight:700}}>-{yen(deduct)}</span></div>
+      <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginTop:8,display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:700,color:"#2d6a4f"}}>残額（{remPct}%）</span><span style={{fontWeight:700,color:"#2d6a4f",fontSize:18}}>{yen(remain)}</span></div>
+    </div>
+    <div style={S.card}>
+      <div style={S.sTitle}>給与按分</div>
+      {names.map(st=>{const isT=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);const ratio=isT&&taxTargetTotal>0?((stSales[st]||0)/taxTargetTotal*100).toFixed(1):0;return <div key={st} style={{marginBottom:14,opacity:isT?1:0.75}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontWeight:700}}>👤 {st}給与</span>{!isT&&<span style={{fontSize:10,background:"#f0ece4",color:"#888",borderRadius:4,padding:"1px 6px"}}>固定費に含む</span>}</div>
+          <div style={{textAlign:"right"}}>{isT?<><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span><span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>:<span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>}</div>
+        </div>
+        {isT&&<div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>}
+        <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
+      </div>;})}
+      <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}><b>給与合計（按分対象）</b><b style={{color:"#2d6a4f"}}>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b></div>
+      <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む　※山辺ボーナスはねこのて給与から支払い</p>
+    </div>
+  </div>;
 }
 
-// 設定タブ
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}) {
-  const [lProps,setLProps]=useState(props); useEffect(()=>setLProps(props),[props]);
-  const [lStaff,setLStaff]=useState(staffList.map(toStaffObj)); useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
-  const [lCfg,setLCfg]=useState(cfg); useEffect(()=>setLCfg(cfg),[cfg]);
-
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}){
+  const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
+  const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
+  const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
   const updProp=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:k==="name"?v:Number(v)}:p));
   const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
-  const updStaffName=(i,v)=>{const a=[...lStaff];a[i]={...a[i],name:v};setLStaff(a);};
-  const toggleTax=(i)=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
+  const toggleTax=i=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
   const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
-  const saveAll=async()=>{
-    await saveProps(lProps);
-    await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));
-    await saveCfg(lCfg);
-    showToast("✅ 保存しました");
-  };
-
-  return (
-    <div style={{animation:"fadeUp .3s ease"}}>
-      <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>👥 スタッフ管理</div>
-        {lStaff.map((s,i)=>(
-          <div key={i} style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",background:"#faf8f5",borderRadius:10,padding:"8px 10px"}}>
-            <input type="text" value={s.name||""} onChange={e=>updStaffName(i,e.target.value)} placeholder="スタッフ名" style={{flex:1}}/>
-            <div style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
-              <span style={{fontSize:11,color:"#888"}}>控除対象</span>
-              <div onClick={()=>toggleTax(i)} style={{
-                width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",
-                background:s.taxTarget!==false?"#2d6a4f":"#ccc",transition:"background .2s"
-              }}>
-                <div style={{
-                  position:"absolute",top:3,left:s.taxTarget!==false?20:3,
-                  width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"
-                }}/>
-              </div>
-            </div>
-            <button style={{...S.iconBtn,color:"#e74c3c",fontSize:16}} onClick={()=>delStaff(i)}>✕</button>
+  const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>👥 スタッフ管理</div>
+      {lStaff.map((s,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",background:"#faf8f5",borderRadius:10,padding:"8px 10px"}}>
+        <input type="text" value={s.name||""} onChange={e=>{const a=[...lStaff];a[i]={...a[i],name:e.target.value};setLStaff(a);}} placeholder="スタッフ名" style={{flex:1}}/>
+        <div style={{display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+          <span style={{fontSize:11,color:"#888"}}>控除対象</span>
+          <div onClick={()=>toggleTax(i)} style={{width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",background:s.taxTarget!==false?"#2d6a4f":"#ccc",transition:"background .2s"}}>
+            <div style={{position:"absolute",top:3,left:s.taxTarget!==false?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
           </div>
-        ))}
-        <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,{name:"",taxTarget:true}])}>＋ スタッフを追加</button>
-      </div>
-
-      <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>🏠 物件マスタ（デフォルト月回数）</div>
-        <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
-        <div style={S.tableWrap}>
-          <table>
-            <thead><tr><th style={{textAlign:"left"}}>物件名</th><th>月額(円)</th><th>標準月回数</th><th></th></tr></thead>
-            <tbody>
-              {lProps.map(p=>(
-                <tr key={p.id}>
-                  <td><input type="text" value={p.name} onChange={e=>updProp(p.id,"name",e.target.value)} style={{width:"100%"}}/></td>
-                  <td><NumInput value={p.fee} onCommit={v=>updProp(p.id,"fee",v)} style={{width:90}}/></td>
-                  <td><NumInput value={p.cnt} onCommit={v=>updProp(p.id,"cnt",Math.max(1,v))} min={1} style={{width:60}}/></td>
-                  <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delProp(p.id)}>✕</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
-        <button style={{...S.cancelBtn,marginTop:10}} onClick={addProp}>＋ 物件を追加</button>
-      </div>
-
-      <div style={{...S.card,marginBottom:12}}>
-        <div style={S.sTitle}>⚙️ 固定設定</div>
-        <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
-        <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
-      </div>
-
-      <button style={S.saveBtn} onClick={saveAll}>💾 すべて保存</button>
-
-      <PwCard password={password} savePassword={savePassword} showToast={showToast}/>
+        <button style={{...S.iconBtn,color:"#e74c3c",fontSize:16}} onClick={()=>delStaff(i)}>✕</button>
+      </div>)}
+      <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,{name:"",taxTarget:true}])}>＋ スタッフを追加</button>
     </div>
-  );
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🏠 物件マスタ</div>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
+      <div style={S.tableWrap}><table>
+        <thead><tr><th style={{textAlign:"left"}}>物件名</th><th>月額(円)</th><th>標準月回数</th><th></th></tr></thead>
+        <tbody>{lProps.map(p=><tr key={p.id}>
+          <td><input type="text" value={p.name} onChange={e=>updProp(p.id,"name",e.target.value)} style={{width:"100%"}}/></td>
+          <td><NumInput value={p.fee} onCommit={v=>updProp(p.id,"fee",v)} style={{width:90}}/></td>
+          <td><NumInput value={p.cnt} onCommit={v=>updProp(p.id,"cnt",Math.max(1,v))} min={1} style={{width:60}}/></td>
+          <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delProp(p.id)}>✕</button></td>
+        </tr>)}</tbody>
+      </table></div>
+      <button style={{...S.cancelBtn,marginTop:10}} onClick={addProp}>＋ 物件を追加</button>
+    </div>
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>⚙️ 固定設定</div>
+      <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
+      <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
+    </div>
+    <button style={S.saveBtn} onClick={saveAll}>💾 すべて保存</button>
+    <PwCard password={password} savePassword={savePassword} showToast={showToast}/>
+  </div>;
 }
 
-function PwCard({password,savePassword,showToast}) {
-  const [cur,setCur]=useState(""); const [next,setNext]=useState(""); const [conf,setConf]=useState("");
-  const change=async()=>{
-    if(cur!==password){showToast("⚠ 現在のパスワードが違います");return;}
-    if(!next){showToast("⚠ 新しいパスワードを入力してください");return;}
-    if(next!==conf){showToast("⚠ 確認用パスワードが一致しません");return;}
-    await savePassword(next);
-    setCur("");setNext("");setConf("");
-    showToast("✅ パスワードを変更しました");
-  };
-  return (
-    <div style={{...S.card,marginTop:12,border:"1.5px solid #fcc"}}>
-      <div style={S.sTitle}>🔑 パスワード変更</div>
-      <FR label="現在のパスワード"><input type="password" value={cur} onChange={e=>setCur(e.target.value)} placeholder="現在のパスワード"/></FR>
-      <FR label="新しいパスワード"><input type="password" value={next} onChange={e=>setNext(e.target.value)} placeholder="新しいパスワード"/></FR>
-      <FR label="新しいパスワード（確認）"><input type="password" value={conf} onChange={e=>setConf(e.target.value)} placeholder="もう一度入力"/></FR>
-      <button style={{...S.saveBtn,background:"linear-gradient(135deg,#1a3a6e,#4a6fa5)"}} onClick={change}>🔑 パスワードを変更</button>
-    </div>
-  );
+function PwCard({password,savePassword,showToast}){
+  const [cur,setCur]=useState("");const [next,setNext]=useState("");const [conf,setConf]=useState("");
+  const change=async()=>{if(cur!==password){showToast("⚠ 現在のパスワードが違います");return;}if(!next){showToast("⚠ 新しいパスワードを入力");return;}if(next!==conf){showToast("⚠ 確認用が一致しません");return;}await savePassword(next);setCur("");setNext("");setConf("");showToast("✅ パスワードを変更しました");};
+  return <div style={{...S.card,marginTop:12,border:"1.5px solid #fcc"}}>
+    <div style={S.sTitle}>🔑 パスワード変更</div>
+    <FR label="現在のパスワード"><input type="password" value={cur} onChange={e=>setCur(e.target.value)} placeholder="現在のパスワード"/></FR>
+    <FR label="新しいパスワード"><input type="password" value={next} onChange={e=>setNext(e.target.value)} placeholder="新しいパスワード"/></FR>
+    <FR label="新しいパスワード（確認）"><input type="password" value={conf} onChange={e=>setConf(e.target.value)} placeholder="もう一度入力"/></FR>
+    <button style={{...S.saveBtn,background:"linear-gradient(135deg,#1a3a6e,#4a6fa5)"}} onClick={change}>🔑 パスワードを変更</button>
+  </div>;
 }
 
 function FR({label,children}){return <div style={{marginBottom:10}}><div style={{fontSize:11,color:"#999",marginBottom:4}}>{label}</div>{children}</div>;}
@@ -615,7 +687,7 @@ const css=`
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#fdf8f5;font-family:'Noto Sans JP',sans-serif;-webkit-tap-highlight-color:transparent}
   input,select,button,textarea{font-family:'Noto Sans JP',sans-serif}
-  input[type=text],input[type=date],input[type=month],input[type=password],select{
+  input[type=text],input[type=date],input[type=month],input[type=password],input[type=tel],select{
     border:1.5px solid #e0d0d0;border-radius:8px;padding:7px 10px;
     background:#fff;font-size:13px;color:#333;outline:none;transition:border-color .2s;width:100%}
   input:focus,select:focus{border-color:#c0392b}
@@ -632,26 +704,22 @@ const css=`
 const S={
   loginBg:{minHeight:"100vh",background:"radial-gradient(ellipse at 50% 40%,#3a0808,#1a0505)",display:"flex",alignItems:"center",justifyContent:"center"},
   loginCard:{background:"rgba(28,8,8,0.95)",border:"1px solid #551111",borderRadius:20,padding:"44px 36px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,minWidth:300},
-  loginIcon:{fontSize:56,marginBottom:4},
-  loginTitle:{fontSize:20,fontWeight:700,color:"#fff",letterSpacing:2},
-  loginSub:{fontSize:11,color:"#884444",marginBottom:8},
+  loginIcon:{fontSize:56,marginBottom:4},loginTitle:{fontSize:20,fontWeight:700,color:"#fff",letterSpacing:2},loginSub:{fontSize:11,color:"#884444",marginBottom:8},
   loginInput:{width:"100%",padding:"12px 16px",borderRadius:10,border:"1.5px solid #441111",background:"rgba(80,20,20,0.5)",color:"#fff",fontSize:15,outline:"none",textAlign:"center",letterSpacing:4},
   loginBtn:{width:"100%",padding:"13px 0",background:"linear-gradient(135deg,#a00,#e03)",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4},
   app:{minHeight:"100vh",background:"#fdf8f5"},
   header:{background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",padding:"12px 16px",display:"flex",alignItems:"center",gap:8},
-  hTitle:{fontWeight:700,fontSize:15,color:"#fff"},
-  hSub:{fontSize:10,color:"rgba(255,255,255,0.6)"},
+  hTitle:{fontWeight:700,fontSize:15,color:"#fff"},hSub:{fontSize:10,color:"rgba(255,255,255,0.6)"},
   logoutBtn:{background:"rgba(255,255,255,0.15)",border:"none",color:"rgba(255,255,255,0.7)",borderRadius:8,padding:"5px 12px",fontSize:11,cursor:"pointer"},
   tabs:{display:"flex",background:"#fff",borderBottom:"2px solid #fde8e8",overflowX:"auto"},
-  tab:{flex:1,padding:"12px 6px",background:"none",border:"none",fontSize:12,color:"#bbb",cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",minWidth:70},
+  tab:{flex:1,padding:"12px 4px",background:"none",border:"none",fontSize:11,color:"#bbb",cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",minWidth:55},
   tabOn:{color:"#c0392b",borderBottom:"3px solid #e03030",fontWeight:700,background:"#fff8f8"},
   body:{padding:14,maxWidth:860,margin:"0 auto"},
   ctrlRow:{display:"flex",gap:10,alignItems:"center",marginBottom:12,flexWrap:"wrap"},
   pills:{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"},
   staffBar:{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"},
   staffCell:{flex:1,minWidth:100,background:"#fff5f5",borderRadius:10,padding:"10px 12px",border:"1px solid #fcc"},
-  staffLabel:{fontSize:11,color:"#c44",marginBottom:3},
-  staffAmt:{fontWeight:700,color:"#8b0000",fontSize:14},
+  staffLabel:{fontSize:11,color:"#c44",marginBottom:3},staffAmt:{fontWeight:700,color:"#8b0000",fontSize:14},
   tableWrap:{background:"#fff",borderRadius:12,overflow:"auto",boxShadow:"0 2px 8px rgba(180,0,0,0.07)"},
   card:{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 8px rgba(180,0,0,0.07)",marginBottom:4},
   formCard:{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 8px rgba(180,0,0,0.07)",marginBottom:12},
@@ -663,8 +731,7 @@ const S={
   cancelBtn:{padding:"10px 18px",background:"#f5f5f5",border:"1.5px solid #ddd",borderRadius:10,fontSize:13,cursor:"pointer",color:"#666"},
   redBtn:{padding:"8px 16px",background:"#fff0f0",border:"1.5px solid #f9a8a8",borderRadius:8,fontSize:12,cursor:"pointer",color:"#c0392b",fontWeight:600},
   badge:{display:"inline-block",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700},
-  bCash:{background:"#fef9c3",color:"#7a4f00"},
-  bXfer:{background:"#dbeafe",color:"#1e3a8a"},
+  bCash:{background:"#fef9c3",color:"#7a4f00"},bXfer:{background:"#dbeafe",color:"#1e3a8a"},
   iconBtn:{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"2px 5px",color:"#c88"},
   empty:{textAlign:"center",color:"#ccc",padding:40,fontSize:13},
   sTitle:{fontWeight:700,fontSize:14,color:"#8b0000",marginBottom:12},
@@ -672,4 +739,6 @@ const S={
   barBg:{height:8,background:"#fee",borderRadius:8,overflow:"hidden"},
   bar:{height:"100%",borderRadius:8,background:"linear-gradient(90deg,#c0392b,#e74c3c)",transition:"width .5s"},
   toast:{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#7a0000",color:"#fff",borderRadius:12,padding:"12px 24px",fontSize:13,fontWeight:600,zIndex:999,animation:"toastAnim 2.5s ease forwards",whiteSpace:"nowrap",boxShadow:"0 4px 20px rgba(180,0,0,0.4)"},
+  modalBg:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:900},
+  modal:{background:"#fff",borderRadius:"16px 16px 0 0",padding:"24px 20px",width:"100%",maxWidth:600,maxHeight:"90vh",overflowY:"auto"},
 };
