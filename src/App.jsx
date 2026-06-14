@@ -317,7 +317,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
             <td style={{textAlign:"left",color:"#666",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
             <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"−"}</td>
             <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
-            <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{job.status}</span></td>
+            <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{job.status}</span></td>
             <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f"}}>{job.amount>0?yen(job.amount):"−"}</td>
             <td onClick={e=>e.stopPropagation()}>
               {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:6,fontSize:10,cursor:"pointer",color:"#166534",padding:"2px 6px",whiteSpace:"nowrap"}}>✅完了</button>}
@@ -464,7 +464,7 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
                 <td style={{textAlign:"left",color:"#666",fontSize:11,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
                 <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"未定"}</td>
                 <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
-                <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700}}>{job.status}</span></td>
+                <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{job.status}</span></td>
                 <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f",fontSize:11}}>{job.amount>0?yen(job.amount):"−"}</td>
                 <td><button onClick={()=>moveToJobs(job)} style={{background:"none",border:"1px solid #ddd",borderRadius:6,fontSize:10,cursor:"pointer",color:"#888",padding:"2px 6px",whiteSpace:"nowrap"}}>詳細→</button></td>
               </tr>;
