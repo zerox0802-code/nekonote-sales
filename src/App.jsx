@@ -31,12 +31,13 @@ const DEFAULT_PROPS = [
   {id:20, name:"鞍山コーポ",                 fee:4000,  cnt:2},
 ];
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
-const STATUS_LIST = ["見積済","確定","完了","キャンセル"];
+const STATUS_LIST = ["見込み","見積済","確定","完了","キャンセル"];
 const STATUS_COLOR = {
   "見積済":{bg:"#fef9c3",color:"#854d0e",border:"#fde047"},
   "確定":  {bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},
   "完了":  {bg:"#dcfce7",color:"#166534",border:"#86efac"},
   "キャンセル":{bg:"#f3f4f6",color:"#6b7280",border:"#d1d5db"},
+  "見込み":{bg:"#f3e8ff",color:"#7c3aed",border:"#c4b5fd"},
 };
 const WEEKDAYS=["日","月","火","水","木","金","土"];
 
@@ -168,6 +169,7 @@ export default function App(){
     ["cleaning","🏠 日常清掃"],
     ["cases","📋 案件売上"],
     ["jobs","🗂 案件管理"+(newCount>0?" 🆕":"")],
+    ["future","📅 来月以降"],
     ["customers","👥 顧客"],
     ["closing","📊 月末締め"],
     ["cfg","⚙️ 設定"],
@@ -198,6 +200,7 @@ export default function App(){
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast}/>}
+        {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
         {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
@@ -207,7 +210,7 @@ export default function App(){
 }
 
 function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast}){
-  const [view,setView]=useState("list");
+  const [view,setView]=useState("list"); // list | calendar | table
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
   const [editJob,setEditJob]=useState(null);
@@ -217,9 +220,20 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const [form,setForm]=useState(blank());
 
   const filtered=useMemo(()=>{
-    let r=jobs||[];
+    const cur=toMonth();
+    let r=(jobs||[]).filter(j=>{
+      // 来月以降は除外（作業日が来月以降のものは別タブ）
+      if(j.workDate&&j.workDate>cur+"-31")return false;
+      return true;
+    });
     if(filterStatus!=="全て")r=r.filter(j=>j.status===filterStatus);
-    return [...r].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    return [...r].sort((a,b)=>{
+      // 作業日順→未設定は最後
+      if(a.workDate&&b.workDate)return a.workDate.localeCompare(b.workDate);
+      if(a.workDate)return -1;
+      if(b.workDate)return 1;
+      return (b.createdAt||0)-(a.createdAt||0);
+    });
   },[jobs,filterStatus]);
 
   const openForm=(job=null)=>{
@@ -270,14 +284,48 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
         ))}
       </div>
       <div style={{display:"flex",gap:6,marginLeft:"auto"}}>
-        <button onClick={()=>setView(v=>v==="list"?"calendar":"list")} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>
-          {view==="list"?"📅 カレンダー":"📋 リスト"}
-        </button>
+        <div style={{display:"flex",gap:4}}>
+          <button onClick={()=>setView("list")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="list"?"#c0392b":"#f5f5f5",color:view==="list"?"#fff":"#666"}}>📋</button>
+          <button onClick={()=>setView("table")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="table"?"#c0392b":"#f5f5f5",color:view==="table"?"#fff":"#666"}}>☰</button>
+          <button onClick={()=>setView("calendar")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="calendar"?"#c0392b":"#f5f5f5",color:view==="calendar"?"#fff":"#666"}}>📅</button>
+        </div>
         <button onClick={()=>openForm()} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 追加</button>
       </div>
     </div>
 
     {view==="calendar"&&<CalendarView jobs={jobs||[]} calMonth={calMonth} setCalMonth={setCalMonth} onClickJob={openForm}/>}
+
+    {view==="table"&&<div style={{...S.tableWrap,marginBottom:12}}>
+      {filtered.length===0?<div style={S.empty}>案件がありません</div>:
+      <table>
+        <thead><tr>
+          <th style={{textAlign:"left",minWidth:80}}>依頼者</th>
+          <th style={{textAlign:"left",minWidth:90}}>内容</th>
+          <th>作業日</th>
+          <th>担当</th>
+          <th>状況</th>
+          <th style={{textAlign:"right"}}>金額</th>
+          <th></th>
+        </tr></thead>
+        <tbody>{filtered.map(job=>{
+          const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
+          return <tr key={job.id} style={{cursor:"pointer"}} onClick={()=>openForm(job)}>
+            <td style={{textAlign:"left",fontWeight:600}}>
+              {job.isNew&&job.status!=="完了"&&job.status!=="キャンセル"&&<span style={{background:"#e03030",color:"#fff",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4}}>NEW</span>}
+              {job.client}
+            </td>
+            <td style={{textAlign:"left",color:"#666"}}>{job.content}</td>
+            <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"−"}</td>
+            <td>{job.staff}</td>
+            <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{job.status}</span></td>
+            <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f"}}>{job.amount>0?yen(job.amount):"−"}</td>
+            <td onClick={e=>e.stopPropagation()}>
+              {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:6,fontSize:10,cursor:"pointer",color:"#166534",padding:"2px 6px",whiteSpace:"nowrap"}}>✅完了</button>}
+            </td>
+          </tr>;
+        })}</tbody>
+      </table>}
+    </div>}
 
     {view==="list"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {filtered.length===0?<div style={S.empty}>案件がありません</div>:filtered.map(job=>{
@@ -335,6 +383,96 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
         </div>
       </div>
     </div>}
+  </div>;
+}
+
+function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
+  const names=stNames(staffList);
+  const cur=toMonth();
+
+  // 来月以降の案件（作業日が来月以降 or 見込みステータス）
+  const futureJobs=useMemo(()=>{
+    return (jobs||[]).filter(j=>{
+      if(j.status==="完了"||j.status==="キャンセル")return false;
+      if(j.workDate&&j.workDate>cur+"-31")return true;
+      if(j.status==="見込み"&&(!j.workDate||j.workDate>cur+"-31"))return true;
+      return false;
+    }).sort((a,b)=>{
+      if(a.workDate&&b.workDate)return a.workDate.localeCompare(b.workDate);
+      if(a.workDate)return -1;
+      if(b.workDate)return 1;
+      return 0;
+    });
+  },[jobs,cur]);
+
+  // 当月になった案件を自動で案件管理へ（ステータス変更は不要、表示から除外されるだけ）
+  const movedToThisMonth=useMemo(()=>{
+    return (jobs||[]).filter(j=>{
+      if(j.status==="完了"||j.status==="キャンセル")return false;
+      if(j.workDate&&j.workDate>=cur+"-01"&&j.workDate<=cur+"-31")return true;
+      return false;
+    });
+  },[jobs,cur]);
+
+  // 月ごとにグループ化
+  const grouped=useMemo(()=>{
+    const m={};
+    futureJobs.forEach(j=>{
+      const key=j.workDate?j.workDate.slice(0,7):"未定";
+      if(!m[key])m[key]=[];
+      m[key].push(j);
+    });
+    return Object.entries(m).sort(([a],[b])=>{
+      if(a==="未定")return 1;if(b==="未定")return -1;
+      return a.localeCompare(b);
+    });
+  },[futureJobs]);
+
+  const moveToJobs=(job)=>{
+    setTab("jobs");
+    showToast(`✅ 案件管理タブで ${job.client} を確認できます`);
+  };
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    {movedToThisMonth.length>0&&<div style={{background:"#dbeafe",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#1e40af"}}>
+      📋 当月に入った案件が {movedToThisMonth.length}件 あります →
+      <button onClick={()=>setTab("jobs")} style={{background:"none",border:"none",color:"#1e40af",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:12}}>案件管理で確認</button>
+    </div>}
+
+    {futureJobs.length===0
+      ?<div style={S.empty}>来月以降の案件・見込みがありません</div>
+      :grouped.map(([month,mJobs])=><div key={month} style={{marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#8b0000",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+          📅 {month==="未定"?"日程未定":month.replace("-","年")+"月"}
+          <span style={{background:"#f5eeee",color:"#888",borderRadius:10,padding:"1px 8px",fontSize:11}}>{mJobs.length}件</span>
+        </div>
+        <div style={{...S.tableWrap}}>
+          <table>
+            <thead><tr>
+              <th style={{textAlign:"left"}}>依頼者</th>
+              <th style={{textAlign:"left"}}>内容</th>
+              <th>作業日</th>
+              <th>担当</th>
+              <th>状況</th>
+              <th style={{textAlign:"right"}}>金額</th>
+              <th></th>
+            </tr></thead>
+            <tbody>{mJobs.map(job=>{
+              const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
+              return <tr key={job.id}>
+                <td style={{textAlign:"left",fontWeight:600}}>{job.client}</td>
+                <td style={{textAlign:"left",color:"#666",fontSize:11}}>{job.content}</td>
+                <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"未定"}</td>
+                <td style={{fontSize:11}}>{job.staff}</td>
+                <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700}}>{job.status}</span></td>
+                <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f",fontSize:11}}>{job.amount>0?yen(job.amount):"−"}</td>
+                <td><button onClick={()=>moveToJobs(job)} style={{background:"none",border:"1px solid #ddd",borderRadius:6,fontSize:10,cursor:"pointer",color:"#888",padding:"2px 6px",whiteSpace:"nowrap"}}>詳細→</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </div>)
+    }
   </div>;
 }
 
