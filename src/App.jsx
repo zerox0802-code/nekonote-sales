@@ -860,7 +860,7 @@ const S={
   staffLabel:{fontSize:11,color:"#c44",marginBottom:3},staffAmt:{fontWeight:700,color:"#8b0000",fontSize:14},
   tableWrap:{background:"#fff",borderRadius:12,overflow:"auto",boxShadow:"0 2px 8px rgba(180,0,0,0.07)"},
   card:{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 8px rgba(180,0,0,0.07)",marginBottom:4},
-  formCard:{background:"#fff",borderRadius:14,padding:16,boxShadow:"0 2px 8px rgba(180,0,0,0.07)",marginBottom:12},
+  formCard:{background:"#fff",borderRadius:14,padding:"16px 16px",boxShadow:"0 2px 8px rgba(180,0,0,0.07)",marginBottom:12},
   formTitle:{fontWeight:700,fontSize:14,color:"#8b0000",marginBottom:12},
   seg:{flex:1,padding:"8px 0",background:"#f5f5f5",border:"1.5px solid #ddd",borderRadius:8,fontSize:12,cursor:"pointer",color:"#888"},
   segCash:{background:"#fef9c3",borderColor:"#f0b429",color:"#7a4f00",fontWeight:700},
