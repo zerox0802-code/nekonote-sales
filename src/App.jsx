@@ -166,13 +166,13 @@ export default function App(){
   if(!authed)return <Login onLogin={()=>setAuthed(true)} password={password}/>;
 
   const tabs=[
-    ["cleaning","🏠 日常清掃"],
-    ["cases","📋 案件売上"],
-    ["jobs","🗂 案件管理"+(newCount>0?" 🆕":"")],
-    ["future","📅 来月以降"],
-    ["customers","👥 顧客"],
-    ["closing","📊 月末締め"],
-    ["cfg","⚙️ 設定"],
+    ["cleaning","🏠清掃"],
+    ["cases","📋売上"],
+    ["jobs","🗂案件"+(newCount>0?"🆕":"")],
+    ["future","📅来月〜"],
+    ["customers","👥顧客"],
+    ["closing","📊締め"],
+    ["cfg","⚙設定"],
   ];
 
   return <div style={S.app}><style>{css}</style>
@@ -310,13 +310,13 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
         <tbody>{filtered.map(job=>{
           const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
           return <tr key={job.id} style={{cursor:"pointer"}} onClick={()=>openForm(job)}>
-            <td style={{textAlign:"left",fontWeight:600}}>
+            <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               {job.isNew&&job.status!=="完了"&&job.status!=="キャンセル"&&<span style={{background:"#e03030",color:"#fff",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4}}>NEW</span>}
               {job.client}
             </td>
-            <td style={{textAlign:"left",color:"#666"}}>{job.content}</td>
+            <td style={{textAlign:"left",color:"#666",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
             <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"−"}</td>
-            <td>{job.staff}</td>
+            <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
             <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{job.status}</span></td>
             <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f"}}>{job.amount>0?yen(job.amount):"−"}</td>
             <td onClick={e=>e.stopPropagation()}>
@@ -460,10 +460,10 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
             <tbody>{mJobs.map(job=>{
               const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
               return <tr key={job.id}>
-                <td style={{textAlign:"left",fontWeight:600}}>{job.client}</td>
-                <td style={{textAlign:"left",color:"#666",fontSize:11}}>{job.content}</td>
+                <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.client}</td>
+                <td style={{textAlign:"left",color:"#666",fontSize:11,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
                 <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"未定"}</td>
-                <td style={{fontSize:11}}>{job.staff}</td>
+                <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
                 <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700}}>{job.status}</span></td>
                 <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f",fontSize:11}}>{job.amount>0?yen(job.amount):"−"}</td>
                 <td><button onClick={()=>moveToJobs(job)} style={{background:"none",border:"1px solid #ddd",borderRadius:6,fontSize:10,cursor:"pointer",color:"#888",padding:"2px 6px",whiteSpace:"nowrap"}}>詳細→</button></td>
@@ -850,8 +850,8 @@ const S={
   hTitle:{fontWeight:700,fontSize:15,color:"#fff"},hSub:{fontSize:10,color:"rgba(255,255,255,0.6)"},
   logoutBtn:{background:"rgba(255,255,255,0.15)",border:"none",color:"rgba(255,255,255,0.7)",borderRadius:8,padding:"5px 12px",fontSize:11,cursor:"pointer"},
   tabs:{display:"flex",background:"#fff",borderBottom:"2px solid #fde8e8",overflowX:"auto"},
-  tab:{flex:1,padding:"12px 4px",background:"none",border:"none",fontSize:11,color:"#bbb",cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",minWidth:55},
-  tabOn:{color:"#c0392b",borderBottom:"3px solid #e03030",fontWeight:700,background:"#fff8f8"},
+  tab:{padding:"10px 8px",background:"none",border:"none",fontSize:10,color:"#bbb",cursor:"pointer",fontWeight:500,whiteSpace:"nowrap",flexShrink:0},
+  tabOn:{color:"#c0392b",borderBottom:"3px solid #e03030",fontWeight:700,background:"#fff8f8",padding:"10px 8px"},
   body:{padding:14,maxWidth:860,margin:"0 auto"},
   ctrlRow:{display:"flex",gap:10,alignItems:"center",marginBottom:12,flexWrap:"wrap"},
   pills:{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"},
