@@ -685,7 +685,7 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
       <table><thead><tr><th>日付</th><th>案件名</th><th>担当</th><th>支払</th><th>金額</th><th></th></tr></thead>
       <tbody>{filtered.map(c=><tr key={c.id}>
         <td style={{whiteSpace:"nowrap"}}>{c.date}</td><td style={{textAlign:"left"}}>{c.name}</td><td>{c.staff}</td>
-        <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment}</span></td>
+        <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
         <td style={{fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
         <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
       </tr>)}</tbody></table>}
@@ -871,7 +871,7 @@ const S={
   cancelBtn:{padding:"10px 18px",background:"#f5f5f5",border:"1.5px solid #ddd",borderRadius:10,fontSize:13,cursor:"pointer",color:"#666"},
   redBtn:{padding:"8px 16px",background:"#fff0f0",border:"1.5px solid #f9a8a8",borderRadius:8,fontSize:12,cursor:"pointer",color:"#c0392b",fontWeight:600},
   badge:{display:"inline-block",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700},
-  bCash:{background:"#fef9c3",color:"#7a4f00"},bXfer:{background:"#dbeafe",color:"#1e3a8a"},
+  bCash:{background:"#fef9c3",color:"#7a4f00",borderRadius:"50%",width:26,height:26,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,border:"1.5px solid #f0b429"},bXfer:{background:"#dbeafe",color:"#1e3a8a"},
   iconBtn:{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"2px 5px",color:"#c88"},
   empty:{textAlign:"center",color:"#ccc",padding:40,fontSize:13},
   sTitle:{fontWeight:700,fontSize:14,color:"#8b0000",marginBottom:12},
