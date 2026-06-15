@@ -170,6 +170,7 @@ export default function App(){
     ["cases","📋売上"],
     ["jobs","🗂案件"+(newCount>0?"🆕":"")],
     ["future","📅来月〜"],
+    ["estimate","💴見積"],
     ["customers","👥顧客"],
     ["closing","📊締め"],
     ["cfg","⚙設定"],
@@ -201,6 +202,7 @@ export default function App(){
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
+        {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
         {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
@@ -880,3 +882,207 @@ const S={
   modalBg:{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:900},
   modal:{background:"#fff",borderRadius:"16px 16px 0 0",padding:"24px 20px",width:"100%",maxWidth:600,maxHeight:"90vh",overflowY:"auto"},
 };
+
+// ══════════════════════════════════════════
+// 見積もりタブ
+// ══════════════════════════════════════════
+const PRICE_DATA = {
+  house: {
+    label:"🏠 ハウスクリーニング",
+    items:[
+      {key:"1R",   label:"1R",       price:10000},
+      {key:"1DK",  label:"1DK",      price:11000},
+      {key:"1LDK", label:"1LDK/2K",  price:15000},
+      {key:"2DK",  label:"2DK",      price:16000},
+      {key:"2LDK", label:"2LDK/3K",  price:18000},
+      {key:"3DK",  label:"3DK",      price:19000},
+      {key:"3LDK", label:"3LDK",     price:24000},
+      {key:"4DK",  label:"4DK",      price:25000},
+      {key:"4LDK", label:"4LDK",     price:30000},
+      {key:"detached", label:"戸建（要相談）", price:null},
+    ],
+    options:[
+      {key:"extra_room", label:"部屋追加（+1部屋）", price:6000, perUnit:true, unitLabel:"部屋"},
+      {key:"detached_add", label:"分譲・戸建て追加", price:13000},
+      {key:"travel", label:"出張費", price:2200},
+    ]
+  },
+  bee: {
+    label:"🐝 蜂の巣駆除",
+    items:[
+      {key:"ashinaga", label:"アシナガバチ",    price:10000},
+      {key:"suzume",   label:"スズメバチ全般",   price:15000},
+      {key:"keiro",    label:"キイロスズメバチ", price:20000},
+    ],
+    options:[
+      {key:"size_10_15", label:"巣サイズ 10-15cm",  price:3000},
+      {key:"size_15_20", label:"巣サイズ 15-20cm〜", price:6000},
+      {key:"height",     label:"高所・難所追加",      price:3000},
+      {key:"travel",     label:"出張費",              price:2200},
+    ]
+  },
+  hourly: {
+    label:"⏰ 時間工賃",
+    items:[],
+    options:[
+      {key:"hour",   label:"作業時間（1時間）",  price:3300, perUnit:true, unitLabel:"時間"},
+      {key:"travel", label:"出張費",             price:2200},
+      {key:"staff",  label:"スタッフ追加（+1名）", price:3300, perUnit:true, unitLabel:"名"},
+    ]
+  },
+  pesticide: {
+    label:"🪲 薬剤散布（ゴキブリ等）",
+    items:[],
+    options:[
+      {key:"tech",   label:"技術料", price:3300},
+      {key:"material", label:"資材費", price:3300},
+      {key:"travel", label:"出張費",  price:2200},
+    ]
+  },
+};
+
+function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
+  const names = stNames(staffList);
+  const [category,setCategory]=useState("house");
+  const [selectedItem,setSelectedItem]=useState(null);
+  const [optionCounts,setOptionCounts]=useState({});
+  const [memo,setMemo]=useState("");
+  const [client,setClient]=useState("");
+  const [staff,setStaff]=useState(names[0]||"");
+  const [workDate,setWorkDate]=useState("");
+
+  const cat = PRICE_DATA[category];
+
+  const resetForm=()=>{setSelectedItem(null);setOptionCounts({});setMemo("");};
+  const changeCategory=(k)=>{setCategory(k);resetForm();};
+
+  const basePrice = selectedItem?.price||0;
+  const optTotal = Object.entries(optionCounts).reduce((sum,[key,cnt])=>{
+    const opt=cat.options.find(o=>o.key===key);
+    if(!opt||!cnt)return sum;
+    return sum+(opt.price*(opt.perUnit?cnt:1));
+  },0);
+  const total = basePrice+optTotal;
+
+  const setOptCount=(key,val)=>{
+    const opt=cat.options.find(o=>o.key===key);
+    if(opt?.perUnit){
+      setOptionCounts(prev=>({...prev,[key]:Math.max(0,Number(val)||0)}));
+    } else {
+      setOptionCounts(prev=>({...prev,[key]:val?1:0}));
+    }
+  };
+
+  const registerJob=async()=>{
+    if(!client){showToast("⚠ 依頼者名を入力してください");return;}
+    const contentLabel = selectedItem?selectedItem.label:cat.label;
+    const optLabels = Object.entries(optionCounts)
+      .filter(([,v])=>v>0)
+      .map(([k,v])=>{const o=cat.options.find(x=>x.key===k);return o?.perUnit?`${o.label}×${v}`:o?.label;})
+      .join("、");
+    const content = contentLabel+(optLabels?`（${optLabels}）`:"")+(memo?` ※${memo}`:"");
+    const newJob={
+      id:Date.now(),client,content,status:"見積済",
+      workDate,staff,address:"",phone:"",payment:"振込",
+      amount:total,memo,createdAt:Date.now(),isNew:true
+    };
+    await saveJobs([newJob,...(jobs||[])]);
+    showToast("✅ 案件管理に登録しました！");
+    setTab("jobs");
+  };
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    {/* カテゴリ選択 */}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {Object.entries(PRICE_DATA).map(([k,v])=>(
+        <button key={k} onClick={()=>changeCategory(k)} style={{
+          padding:"6px 12px",borderRadius:20,border:"1.5px solid",fontSize:11,cursor:"pointer",fontWeight:600,
+          background:category===k?"#c0392b":"#fff",color:category===k?"#fff":"#888",borderColor:category===k?"#c0392b":"#ddd"
+        }}>{v.label}</button>
+      ))}
+    </div>
+
+    <div style={{...S.card,marginBottom:12}}>
+      {/* ベース選択 */}
+      {cat.items.length>0&&<>
+        <div style={S.sTitle}>基本料金を選択</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+          {cat.items.map(item=>(
+            <button key={item.key} onClick={()=>setSelectedItem(item)} style={{
+              padding:"10px 8px",borderRadius:10,border:"1.5px solid",cursor:"pointer",textAlign:"left",
+              background:selectedItem?.key===item.key?"#fff5f5":"#fafafa",
+              borderColor:selectedItem?.key===item.key?"#c0392b":"#eee"
+            }}>
+              <div style={{fontWeight:700,fontSize:13,color:selectedItem?.key===item.key?"#c0392b":"#333"}}>{item.label}</div>
+              <div style={{fontSize:12,color:"#888",marginTop:2}}>{item.price!=null?yen(item.price):"要相談"}</div>
+            </button>
+          ))}
+        </div>
+      </>}
+
+      {/* オプション */}
+      {cat.options.length>0&&<>
+        <div style={S.sTitle}>オプション・追加</div>
+        {cat.options.map(opt=>(
+          <div key={opt.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f5eeee"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:500}}>{opt.label}</div>
+              <div style={{fontSize:11,color:"#aaa"}}>{yen(opt.price)}{opt.perUnit?`/${opt.unitLabel}`:""}</div>
+            </div>
+            {opt.perUnit
+              ?<div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={()=>setOptCount(opt.key,(optionCounts[opt.key]||0)-1)} style={{width:28,height:28,borderRadius:"50%",border:"1.5px solid #ddd",background:"#f5f5f5",cursor:"pointer",fontSize:16,lineHeight:1}}>−</button>
+                <span style={{fontSize:14,fontWeight:700,minWidth:20,textAlign:"center"}}>{optionCounts[opt.key]||0}</span>
+                <button onClick={()=>setOptCount(opt.key,(optionCounts[opt.key]||0)+1)} style={{width:28,height:28,borderRadius:"50%",border:"1.5px solid #c0392b",background:"#fff0f0",cursor:"pointer",fontSize:16,lineHeight:1,color:"#c0392b"}}>＋</button>
+              </div>
+              :<div onClick={()=>setOptCount(opt.key,!(optionCounts[opt.key]))} style={{
+                width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",
+                background:optionCounts[opt.key]?"#c0392b":"#ccc",transition:"background .2s"
+              }}>
+                <div style={{position:"absolute",top:3,left:optionCounts[opt.key]?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+              </div>
+            }
+          </div>
+        ))}
+      </>}
+    </div>
+
+    {/* 合計表示 */}
+    <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginBottom:4}}>見積もり合計</div>
+      {selectedItem&&<div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:4}}>{selectedItem.label} {yen(basePrice)}</div>}
+      {Object.entries(optionCounts).filter(([,v])=>v>0).map(([k,v])=>{
+        const o=cat.options.find(x=>x.key===k);
+        return o?<div key={k} style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{o.label} {o.perUnit?`×${v} `:""}{yen(o.price*(o.perUnit?v:1))}</div>:null;
+      })}
+      <div style={{fontWeight:700,fontSize:28,marginTop:8}}>{yen(total)}</div>
+    </div>
+
+    {/* 案件登録 */}
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>📋 案件に登録</div>
+      <FR label="依頼者名"><input type="text" value={client} onChange={e=>setClient(e.target.value)} placeholder="鳥井さん"/></FR>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
+        <FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)}/></FR>
+        <FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+      </div>
+      <FR label="メモ"><textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} placeholder="現場の特記事項など" style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
+      <button style={S.saveBtn} onClick={registerJob}>📋 案件管理に登録</button>
+    </div>
+
+    {/* 料金表参照 */}
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>📄 料金表（参照用）</div>
+      <div style={{fontSize:11,color:"#888",lineHeight:1.8}}>
+        <b>基本工賃：</b>3,300円/時間・人<br/>
+        <b>出張費：</b>2,200円<br/>
+        <b>薬剤散布：</b>技術料3,300円＋資材費3,300円<br/>
+        <b>蜂の巣：</b>アシナガ10,000円／スズメ15,000円／キイロ20,000円<br/>
+        　サイズ加算：10-15cm +3,000円、15-20cm〜 +6,000円<br/>
+        　高所・難所 +3,000円〜<br/>
+        <b>ハウスクリーニング：</b>1R 10,000円〜4LDK 30,000円<br/>
+        　部屋追加 +6,000円/室、分譲・戸建て +13,000円
+      </div>
+    </div>
+  </div>;
+}
