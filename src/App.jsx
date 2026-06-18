@@ -9,38 +9,37 @@ const SK = {
 };
 const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
-  {id:1,  name:"アメックス長尾ヒルズ",      fee:30000, cnt:9},
-  {id:2,  name:"ティエドール柚須",           fee:8000,  cnt:4},
-  {id:3,  name:"グランリヴィエラ",           fee:5000,  cnt:4},
-  {id:4,  name:"ラヴィータ美松",             fee:10000, cnt:5},
-  {id:5,  name:"フローレス長尾",             fee:10000, cnt:5},
-  {id:6,  name:"塔原サンハイツ",             fee:6600,  cnt:1},
-  {id:7,  name:"ビオニール1",                fee:8000,  cnt:2},
-  {id:8,  name:"ホークヒルズ那珂川",         fee:2500,  cnt:1},
-  {id:9,  name:"サニーガーデン那珂川",       fee:5000,  cnt:2},
-  {id:10, name:"アプリーレ1",               fee:2500,  cnt:1},
-  {id:11, name:"サニータウン次郎丸",         fee:2500,  cnt:1},
-  {id:12, name:"ホークヒルズ古賀",           fee:8000,  cnt:4},
+  {id:1, name:"アメックス長尾ヒルズ", fee:30000, cnt:9},
+  {id:2, name:"ティエドール柚須", fee:8000, cnt:4},
+  {id:3, name:"グランリヴィエラ", fee:5000, cnt:4},
+  {id:4, name:"ラヴィータ美松", fee:10000, cnt:5},
+  {id:5, name:"フローレス長尾", fee:10000, cnt:5},
+  {id:6, name:"塔原サンハイツ", fee:6600, cnt:1},
+  {id:7, name:"ビオニール1", fee:8000, cnt:2},
+  {id:8, name:"ホークヒルズ那珂川", fee:2500, cnt:1},
+  {id:9, name:"サニーガーデン那珂川", fee:5000, cnt:2},
+  {id:10, name:"アプリーレ1", fee:2500, cnt:1},
+  {id:11, name:"サニータウン次郎丸", fee:2500, cnt:1},
+  {id:12, name:"ホークヒルズ古賀", fee:8000, cnt:4},
   {id:13, name:"ホーユーコンフォルト大濠公", fee:12000, cnt:4},
-  {id:14, name:"グレースコート",             fee:12000, cnt:2},
-  {id:15, name:"第5サンシャイン",            fee:25300, cnt:5},
-  {id:16, name:"グランドシャルマン",         fee:17280, cnt:4},
-  {id:17, name:"レクサスガーデン",           fee:17600, cnt:4},
-  {id:18, name:"サニーガーデン安井野",       fee:8800,  cnt:5},
-  {id:19, name:"アクセス",                   fee:14000, cnt:2},
-  {id:20, name:"鞍山コーポ",                 fee:4000,  cnt:2},
+  {id:14, name:"グレースコート", fee:12000, cnt:2},
+  {id:15, name:"第5サンシャイン", fee:25300, cnt:5},
+  {id:16, name:"グランドシャルマン", fee:17280, cnt:4},
+  {id:17, name:"レクサスガーデン", fee:17600, cnt:4},
+  {id:18, name:"サニーガーデン安井野", fee:8800, cnt:5},
+  {id:19, name:"アクセス", fee:14000, cnt:2},
+  {id:20, name:"鞍山コーポ", fee:4000, cnt:2},
 ];
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
 const STATUS_LIST = ["見込み","見積済","確定","完了","キャンセル"];
 const STATUS_COLOR = {
   "見積済":{bg:"#fef9c3",color:"#854d0e",border:"#fde047"},
-  "確定":  {bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},
-  "完了":  {bg:"#dcfce7",color:"#166534",border:"#86efac"},
+  "確定": {bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},
+  "完了": {bg:"#dcfce7",color:"#166534",border:"#86efac"},
   "キャンセル":{bg:"#f3f4f6",color:"#6b7280",border:"#d1d5db"},
   "見込み":{bg:"#f3e8ff",color:"#7c3aed",border:"#c4b5fd"},
 };
 const WEEKDAYS=["日","月","火","水","木","金","土"];
-
 const toStaffObj=s=>typeof s==="string"?{name:s,taxTarget:true}:s;
 const stNames=list=>list.map(s=>toStaffObj(s).name);
 const isTaxTarget=s=>toStaffObj(s).taxTarget!==false;
@@ -108,7 +107,6 @@ export default function App(){
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
   const [newCount,setNewCount]=useState(0);
-
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   useEffect(()=>{(async()=>{const pw=await stGet(SK.password);if(pw)setPassword(pw);})();}, []);
@@ -212,7 +210,7 @@ export default function App(){
 }
 
 function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast}){
-  const [view,setView]=useState("list"); // list | calendar | table
+  const [view,setView]=useState("list");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
   const [editJob,setEditJob]=useState(null);
@@ -224,13 +222,11 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const filtered=useMemo(()=>{
     const cur=toMonth();
     let r=(jobs||[]).filter(j=>{
-      // 来月以降は除外（作業日が来月以降のものは別タブ）
       if(j.workDate&&j.workDate>cur+"-31")return false;
       return true;
     });
     if(filterStatus!=="全て")r=r.filter(j=>j.status===filterStatus);
     return [...r].sort((a,b)=>{
-      // 作業日順→未設定は最後
       if(a.workDate&&b.workDate)return a.workDate.localeCompare(b.workDate);
       if(a.workDate)return -1;
       if(b.workDate)return 1;
@@ -243,12 +239,10 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     else{setForm(blank());setEditJob(null);}
     setShowForm(true);
   };
-
   const selectCustomer=name=>{
     const c=(customers||[]).find(c=>c.name===name);
     setForm(f=>({...f,client:name,address:c?.address||f.address,phone:c?.phone||f.phone}));
   };
-
   const saveJob=async()=>{
     if(!form.client||!form.content){showToast("⚠ 依頼者・依頼内容は必須");return;}
     const now=Date.now();
@@ -267,7 +261,6 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     }
     setShowForm(false);setEditJob(null);setForm(blank());
   };
-
   const deleteJob=async id=>{if(!confirm("削除しますか？"))return;await saveJobs((jobs||[]).filter(j=>j.id!==id));showToast("🗑 削除しました");};
   const changeStatus=async(job,status)=>{
     if(status==="完了"){await completeJob({...job,amount:Number(job.amount)||0});return;}
@@ -296,18 +289,14 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     </div>
 
     {view==="calendar"&&<CalendarView jobs={jobs||[]} calMonth={calMonth} setCalMonth={setCalMonth} onClickJob={openForm}/>}
-
     {view==="table"&&<div style={{...S.tableWrap,marginBottom:12}}>
       {filtered.length===0?<div style={S.empty}>案件がありません</div>:
       <table>
         <thead><tr>
           <th style={{textAlign:"left",minWidth:80}}>依頼者</th>
           <th style={{textAlign:"left",minWidth:90}}>内容</th>
-          <th>作業日</th>
-          <th>担当</th>
-          <th>状況</th>
-          <th style={{textAlign:"right"}}>金額</th>
-          <th></th>
+          <th>作業日</th><th>担当</th><th>状況</th>
+          <th style={{textAlign:"right"}}>金額</th><th></th>
         </tr></thead>
         <tbody>{filtered.map(job=>{
           const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
@@ -389,10 +378,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
 }
 
 function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
-  const names=stNames(staffList);
   const cur=toMonth();
-
-  // 来月以降の案件（作業日が来月以降 or 見込みステータス）
   const futureJobs=useMemo(()=>{
     return (jobs||[]).filter(j=>{
       if(j.status==="完了"||j.status==="キャンセル")return false;
@@ -401,13 +387,10 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
       return false;
     }).sort((a,b)=>{
       if(a.workDate&&b.workDate)return a.workDate.localeCompare(b.workDate);
-      if(a.workDate)return -1;
-      if(b.workDate)return 1;
-      return 0;
+      if(a.workDate)return -1;if(b.workDate)return 1;return 0;
     });
   },[jobs,cur]);
 
-  // 当月になった案件を自動で案件管理へ（ステータス変更は不要、表示から除外されるだけ）
   const movedToThisMonth=useMemo(()=>{
     return (jobs||[]).filter(j=>{
       if(j.status==="完了"||j.status==="キャンセル")return false;
@@ -416,31 +399,24 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
     });
   },[jobs,cur]);
 
-  // 月ごとにグループ化
   const grouped=useMemo(()=>{
     const m={};
     futureJobs.forEach(j=>{
       const key=j.workDate?j.workDate.slice(0,7):"未定";
-      if(!m[key])m[key]=[];
-      m[key].push(j);
+      if(!m[key])m[key]=[];m[key].push(j);
     });
     return Object.entries(m).sort(([a],[b])=>{
-      if(a==="未定")return 1;if(b==="未定")return -1;
-      return a.localeCompare(b);
+      if(a==="未定")return 1;if(b==="未定")return -1;return a.localeCompare(b);
     });
   },[futureJobs]);
 
-  const moveToJobs=(job)=>{
-    setTab("jobs");
-    showToast(`✅ 案件管理タブで ${job.client} を確認できます`);
-  };
+  const moveToJobs=(job)=>{setTab("jobs");showToast(`✅ 案件管理タブで ${job.client} を確認できます`);};
 
   return <div style={{animation:"fadeUp .3s ease"}}>
     {movedToThisMonth.length>0&&<div style={{background:"#dbeafe",borderRadius:12,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#1e40af"}}>
       📋 当月に入った案件が {movedToThisMonth.length}件 あります →
       <button onClick={()=>setTab("jobs")} style={{background:"none",border:"none",color:"#1e40af",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:12}}>案件管理で確認</button>
     </div>}
-
     {futureJobs.length===0
       ?<div style={S.empty}>来月以降の案件・見込みがありません</div>
       :grouped.map(([month,mJobs])=><div key={month} style={{marginBottom:16}}>
@@ -451,13 +427,8 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
         <div style={{...S.tableWrap}}>
           <table>
             <thead><tr>
-              <th style={{textAlign:"left"}}>依頼者</th>
-              <th style={{textAlign:"left"}}>内容</th>
-              <th>作業日</th>
-              <th>担当</th>
-              <th>状況</th>
-              <th style={{textAlign:"right"}}>金額</th>
-              <th></th>
+              <th style={{textAlign:"left"}}>依頼者</th><th style={{textAlign:"left"}}>内容</th>
+              <th>作業日</th><th>担当</th><th>状況</th><th style={{textAlign:"right"}}>金額</th><th></th>
             </tr></thead>
             <tbody>{mJobs.map(job=>{
               const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
@@ -647,6 +618,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   </div>;
 }
 
+// ── ② 修正：案件売上テーブルのくっつき問題を解消 ──
 function CasesTab({month,cases,staffList,saveCases,showToast}){
   const names=stNames(staffList);
   const blank=()=>({date:toDay(),name:"",staff:names[0]||"",payment:"現金",amount:""});
@@ -664,6 +636,7 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
   };
   const startEdit=c=>{setForm({...c,amount:String(c.amount)});setEditId(c.id);};
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除");};
+
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
     <div style={S.formCard}>
@@ -682,13 +655,24 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     </div>
     <div style={S.tableWrap}>
       {filtered.length===0?<div style={S.empty}>この月の案件はありません</div>:
-      <table><thead><tr><th>日付</th><th>案件名</th><th>担当</th><th>支払</th><th>金額</th><th></th></tr></thead>
-      <tbody>{filtered.map(c=><tr key={c.id}>
-        <td style={{whiteSpace:"nowrap"}}>{c.date}</td><td style={{textAlign:"left"}}>{c.name}</td><td>{c.staff}</td>
-        <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
-        <td style={{fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
-        <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
-      </tr>)}</tbody></table>}
+      <table>
+        <thead><tr>
+          <th style={{minWidth:88,whiteSpace:"nowrap"}}>日付</th>
+          <th style={{textAlign:"left",minWidth:130}}>案件名</th>
+          <th style={{minWidth:44}}>担当</th>
+          <th>支払</th>
+          <th style={{textAlign:"right",minWidth:80}}>金額</th>
+          <th></th>
+        </tr></thead>
+        <tbody>{filtered.map(c=><tr key={c.id}>
+          <td style={{whiteSpace:"nowrap",fontSize:11,letterSpacing:"-0.3px"}}>{c.date}</td>
+          <td style={{textAlign:"left",wordBreak:"break-all",fontSize:12}}>{c.name}</td>
+          <td style={{textAlign:"center",fontSize:12}}>{c.staff}</td>
+          <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
+          <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
+          <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
+        </tr>)}</tbody>
+      </table>}
     </div>
   </div>;
 }
@@ -714,6 +698,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
   const remain=total-deduct;
   const remPct=total>0?(remain/total*100).toFixed(1):0;
   const salaries=useMemo(()=>{const m={};names.forEach(st=>{const isT=isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st);m[st]=isT&&taxTargetTotal>0?Math.round(remain*(stSales[st]||0)/taxTargetTotal):null;});return m;},[remain,stSales,taxTargetTotal,staffList]);
+
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
       <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
@@ -752,21 +737,24 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
         <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
       </div>;})}
       <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}><b>給与合計（按分対象）</b><b style={{color:"#2d6a4f"}}>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b></div>
-      <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む　※山辺ボーナスはねこのて給与から支払い</p>
+      <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む ※山辺ボーナスはねこのて給与から支払い</p>
     </div>
   </div>;
 }
 
+// ── ① 修正：物件マスタに住所・呼出番号・備考列を追加 ──
 function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}){
   const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
-  const updProp=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:k==="name"?v:Number(v)}:p));
-  const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1}]);
+  const updPropStr=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:v}:p));
+  const updPropNum=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
+  const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1,address:"",callNo:"",note:""}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
   const toggleTax=i=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
   const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
   const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
+
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>👥 スタッフ管理</div>
@@ -782,20 +770,33 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
       </div>)}
       <button style={S.cancelBtn} onClick={()=>setLStaff([...lStaff,{name:"",taxTarget:true}])}>＋ スタッフを追加</button>
     </div>
+
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>🏠 物件マスタ</div>
       <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
       <div style={S.tableWrap}><table>
-        <thead><tr><th style={{textAlign:"left"}}>物件名</th><th>月額(円)</th><th>標準月回数</th><th></th></tr></thead>
+        <thead><tr>
+          <th style={{textAlign:"left",minWidth:110}}>物件名</th>
+          <th style={{minWidth:80}}>月額(円)</th>
+          <th style={{minWidth:60}}>標準月回数</th>
+          <th style={{textAlign:"left",minWidth:150}}>住所</th>
+          <th style={{minWidth:70}}>呼出番号</th>
+          <th style={{textAlign:"left",minWidth:100}}>備考</th>
+          <th></th>
+        </tr></thead>
         <tbody>{lProps.map(p=><tr key={p.id}>
-          <td><input type="text" value={p.name} onChange={e=>updProp(p.id,"name",e.target.value)} style={{width:"100%"}}/></td>
-          <td><NumInput value={p.fee} onCommit={v=>updProp(p.id,"fee",v)} style={{width:90}}/></td>
-          <td><NumInput value={p.cnt} onCommit={v=>updProp(p.id,"cnt",Math.max(1,v))} min={1} style={{width:60}}/></td>
+          <td><input type="text" value={p.name} onChange={e=>updPropStr(p.id,"name",e.target.value)} style={{width:"100%"}}/></td>
+          <td><NumInput value={p.fee} onCommit={v=>updPropNum(p.id,"fee",v)} style={{width:90}}/></td>
+          <td><NumInput value={p.cnt} onCommit={v=>updPropNum(p.id,"cnt",Math.max(1,v))} min={1} style={{width:60}}/></td>
+          <td><input type="text" value={p.address||""} onChange={e=>updPropStr(p.id,"address",e.target.value)} style={{width:"100%",minWidth:140}} placeholder="福岡市…"/></td>
+          <td><input type="text" value={p.callNo||""} onChange={e=>updPropStr(p.id,"callNo",e.target.value)} style={{width:80}} placeholder="#101"/></td>
+          <td><input type="text" value={p.note||""} onChange={e=>updPropStr(p.id,"note",e.target.value)} style={{width:"100%",minWidth:100}} placeholder="メモ"/></td>
           <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delProp(p.id)}>✕</button></td>
         </tr>)}</tbody>
       </table></div>
       <button style={{...S.cancelBtn,marginTop:10}} onClick={addProp}>＋ 物件を追加</button>
     </div>
+
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>⚙️ 固定設定</div>
       <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
@@ -823,24 +824,25 @@ function Pill({label,val,red}){return <div style={{background:red?"#c0392b":"#f5
 function DRow({label,note,amt}){return <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #f5eeee",fontSize:13}}><span style={{color:"#666"}}>{label} <span style={{color:"#bbb",fontSize:11}}>({note})</span></span><span style={{color:"#c0392b",fontWeight:600}}>-{yen(amt)}</span></div>;}
 
 const css=`
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#fdf8f5;font-family:'Noto Sans JP',sans-serif;-webkit-tap-highlight-color:transparent}
-  input,select,button,textarea{font-family:'Noto Sans JP',sans-serif}
-  input[type=text],input[type=date],input[type=month],input[type=password],input[type=tel],select{
-    border:1.5px solid #e0d0d0;border-radius:8px;padding:7px 10px;
-    background:#fff;font-size:13px;color:#333;outline:none;transition:border-color .2s;width:100%}
-  input:focus,select:focus{border-color:#c0392b}
-  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#ddd;border-radius:4px}
-  table{border-collapse:collapse;width:100%}
-  th{background:#fff5f5;font-size:11px;font-weight:700;color:#c44;padding:8px 6px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:2px solid #fcc}
-  td{padding:7px 6px;border-bottom:1px solid #f5eeee;font-size:12px;text-align:center}
-  tr:hover td{background:#fff8f8}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
-  @keyframes toastAnim{0%{opacity:0;transform:translateX(-50%) translateY(10px)}15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}100%{opacity:0}}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#fdf8f5;font-family:'Noto Sans JP',sans-serif;-webkit-tap-highlight-color:transparent}
+input,select,button,textarea{font-family:'Noto Sans JP',sans-serif}
+input[type=text],input[type=date],input[type=month],input[type=password],input[type=tel],select{
+  border:1.5px solid #e0d0d0;border-radius:8px;padding:7px 10px;
+  background:#fff;font-size:13px;color:#333;outline:none;transition:border-color .2s;width:100%}
+input:focus,select:focus{border-color:#c0392b}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#ddd;border-radius:4px}
+table{border-collapse:collapse;width:100%}
+th{background:#fff5f5;font-size:11px;font-weight:700;color:#c44;padding:8px 6px;text-align:center;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:2px solid #fcc}
+td{padding:7px 6px;border-bottom:1px solid #f5eeee;font-size:12px;text-align:center}
+tr:hover td{background:#fff8f8}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+@keyframes toastAnim{0%{opacity:0;transform:translateX(-50%) translateY(10px)}15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}100%{opacity:0}}
 `;
+
 const S={
   loginBg:{minHeight:"100vh",background:"radial-gradient(ellipse at 50% 40%,#3a0808,#1a0505)",display:"flex",alignItems:"center",justifyContent:"center"},
   loginCard:{background:"rgba(28,8,8,0.95)",border:"1px solid #551111",borderRadius:20,padding:"44px 36px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,minWidth:300},
@@ -890,15 +892,15 @@ const PRICE_DATA = {
   house: {
     label:"🏠 ハウスクリーニング",
     items:[
-      {key:"1R",   label:"1R",       price:10000},
-      {key:"1DK",  label:"1DK",      price:11000},
-      {key:"1LDK", label:"1LDK/2K",  price:15000},
-      {key:"2DK",  label:"2DK",      price:16000},
-      {key:"2LDK", label:"2LDK/3K",  price:18000},
-      {key:"3DK",  label:"3DK",      price:19000},
-      {key:"3LDK", label:"3LDK",     price:24000},
-      {key:"4DK",  label:"4DK",      price:25000},
-      {key:"4LDK", label:"4LDK",     price:30000},
+      {key:"1R", label:"1R", price:10000},
+      {key:"1DK", label:"1DK", price:11000},
+      {key:"1LDK", label:"1LDK/2K", price:15000},
+      {key:"2DK", label:"2DK", price:16000},
+      {key:"2LDK", label:"2LDK/3K", price:18000},
+      {key:"3DK", label:"3DK", price:19000},
+      {key:"3LDK", label:"3LDK", price:24000},
+      {key:"4DK", label:"4DK", price:25000},
+      {key:"4LDK", label:"4LDK", price:30000},
       {key:"detached", label:"戸建（要相談）", price:null},
     ],
     options:[
@@ -910,33 +912,33 @@ const PRICE_DATA = {
   bee: {
     label:"🐝 蜂の巣駆除",
     items:[
-      {key:"ashinaga", label:"アシナガバチ",    price:10000},
-      {key:"suzume",   label:"スズメバチ全般",   price:15000},
-      {key:"keiro",    label:"キイロスズメバチ", price:20000},
+      {key:"ashinaga", label:"アシナガバチ", price:10000},
+      {key:"suzume", label:"スズメバチ全般", price:15000},
+      {key:"keiro", label:"キイロスズメバチ", price:20000},
     ],
     options:[
-      {key:"size_10_15", label:"巣サイズ 10-15cm",  price:3000},
+      {key:"size_10_15", label:"巣サイズ 10-15cm", price:3000},
       {key:"size_15_20", label:"巣サイズ 15-20cm〜", price:6000},
-      {key:"height",     label:"高所・難所追加",      price:3000},
-      {key:"travel",     label:"出張費",              price:2200},
+      {key:"height", label:"高所・難所追加", price:3000},
+      {key:"travel", label:"出張費", price:2200},
     ]
   },
   hourly: {
     label:"⏰ 時間工賃",
     items:[],
     options:[
-      {key:"hour",   label:"作業時間（1時間）",  price:3300, perUnit:true, unitLabel:"時間"},
-      {key:"travel", label:"出張費",             price:2200},
-      {key:"staff",  label:"スタッフ追加（+1名）", price:3300, perUnit:true, unitLabel:"名"},
+      {key:"hour", label:"作業時間（1時間）", price:3300, perUnit:true, unitLabel:"時間"},
+      {key:"travel", label:"出張費", price:2200},
+      {key:"staff", label:"スタッフ追加（+1名）", price:3300, perUnit:true, unitLabel:"名"},
     ]
   },
   pesticide: {
     label:"🪲 薬剤散布（ゴキブリ等）",
     items:[],
     options:[
-      {key:"tech",   label:"技術料", price:3300},
+      {key:"tech", label:"技術料", price:3300},
       {key:"material", label:"資材費", price:3300},
-      {key:"travel", label:"出張費",  price:2200},
+      {key:"travel", label:"出張費", price:2200},
     ]
   },
 };
@@ -952,7 +954,6 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
   const [workDate,setWorkDate]=useState("");
 
   const cat = PRICE_DATA[category];
-
   const resetForm=()=>{setSelectedItem(null);setOptionCounts({});setMemo("");};
   const changeCategory=(k)=>{setCategory(k);resetForm();};
 
@@ -960,129 +961,120 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
   const optTotal = Object.entries(optionCounts).reduce((sum,[key,cnt])=>{
     const opt=cat.options.find(o=>o.key===key);
     if(!opt||!cnt)return sum;
-    return sum+(opt.price*(opt.perUnit?cnt:1));
+    return sum+(opt.perUnit?opt.price*cnt:opt.price);
   },0);
-  const total = basePrice+optTotal;
+  const grandTotal = basePrice+optTotal;
 
-  const setOptCount=(key,val)=>{
-    const opt=cat.options.find(o=>o.key===key);
-    if(opt?.perUnit){
-      setOptionCounts(prev=>({...prev,[key]:Math.max(0,Number(val)||0)}));
-    } else {
-      setOptionCounts(prev=>({...prev,[key]:val?1:0}));
-    }
+  const setOptCount=(key,delta)=>{
+    setOptionCounts(prev=>{
+      const cur=prev[key]||0;
+      const next=Math.max(0,cur+delta);
+      return {...prev,[key]:next};
+    });
+  };
+  const toggleOption=(key)=>{
+    setOptionCounts(prev=>{
+      if(prev[key])return {...prev,[key]:0};
+      return {...prev,[key]:1};
+    });
   };
 
-  const registerJob=async()=>{
-    if(!client){showToast("⚠ 依頼者名を入力してください");return;}
-    const contentLabel = selectedItem?selectedItem.label:cat.label;
-    const optLabels = Object.entries(optionCounts)
-      .filter(([,v])=>v>0)
-      .map(([k,v])=>{const o=cat.options.find(x=>x.key===k);return o?.perUnit?`${o.label}×${v}`:o?.label;})
-      .join("、");
-    const content = contentLabel+(optLabels?`（${optLabels}）`:"")+(memo?` ※${memo}`:"");
-    const newJob={
-      id:Date.now(),client,content,status:"見積済",
-      workDate,staff,address:"",phone:"",payment:"振込",
-      amount:total,memo,createdAt:Date.now(),isNew:true
+  const saveAsJob=async()=>{
+    if(!client){showToast("⚠ 依頼者を入力してください");return;}
+    const lines=[`【見積】${cat.label}`];
+    if(selectedItem)lines.push(`  ${selectedItem.label}：${yen(selectedItem.price||0)}`);
+    cat.options.forEach(o=>{
+      const cnt=optionCounts[o.key]||0;
+      if(!cnt)return;
+      lines.push(`  ${o.label}${o.perUnit?` ×${cnt}`:""}：${yen(o.perUnit?o.price*cnt:o.price)}`);
+    });
+    lines.push(`  合計：${yen(grandTotal)}`);
+    if(memo)lines.push(`  メモ：${memo}`);
+    const nj={
+      id:Date.now(),client,content:lines[0],
+      status:"見積済",workDate,staff,address:"",phone:"",payment:"振込",
+      amount:grandTotal,memo:lines.slice(1).join("\n"),
+      createdAt:Date.now(),isNew:true
     };
-    await saveJobs([newJob,...(jobs||[])]);
-    showToast("✅ 案件管理に登録しました！");
+    await saveJobs([nj,...(jobs||[])]);
+    showToast("✅ 案件タブに見積を追加しました");
     setTab("jobs");
   };
 
   return <div style={{animation:"fadeUp .3s ease"}}>
-    {/* カテゴリ選択 */}
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+    <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
       {Object.entries(PRICE_DATA).map(([k,v])=>(
         <button key={k} onClick={()=>changeCategory(k)} style={{
-          padding:"6px 12px",borderRadius:20,border:"1.5px solid",fontSize:11,cursor:"pointer",fontWeight:600,
+          padding:"7px 14px",borderRadius:20,border:"1.5px solid",fontSize:12,cursor:"pointer",fontWeight:600,
           background:category===k?"#c0392b":"#fff",color:category===k?"#fff":"#888",borderColor:category===k?"#c0392b":"#ddd"
         }}>{v.label}</button>
       ))}
     </div>
 
-    <div style={{...S.card,marginBottom:12}}>
-      {/* ベース選択 */}
-      {cat.items.length>0&&<>
-        <div style={S.sTitle}>基本料金を選択</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-          {cat.items.map(item=>(
-            <button key={item.key} onClick={()=>setSelectedItem(item)} style={{
-              padding:"10px 8px",borderRadius:10,border:"1.5px solid",cursor:"pointer",textAlign:"left",
-              background:selectedItem?.key===item.key?"#fff5f5":"#fafafa",
-              borderColor:selectedItem?.key===item.key?"#c0392b":"#eee"
-            }}>
-              <div style={{fontWeight:700,fontSize:13,color:selectedItem?.key===item.key?"#c0392b":"#333"}}>{item.label}</div>
-              <div style={{fontSize:12,color:"#888",marginTop:2}}>{item.price!=null?yen(item.price):"要相談"}</div>
-            </button>
-          ))}
-        </div>
-      </>}
+    {cat.items.length>0&&<div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>基本料金を選択</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {cat.items.map(item=>(
+          <div key={item.key} onClick={()=>setSelectedItem(selectedItem?.key===item.key?null:item)}
+            style={{padding:"10px 14px",borderRadius:10,border:`1.5px solid ${selectedItem?.key===item.key?"#c0392b":"#e0d0d0"}`,
+              background:selectedItem?.key===item.key?"#fff5f5":"#fff",cursor:"pointer",
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:600,fontSize:13}}>{item.label}</span>
+            <span style={{color:item.price?"#2d6a4f":"#aaa",fontWeight:700,fontSize:13}}>
+              {item.price?yen(item.price):"要相談"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>}
 
-      {/* オプション */}
-      {cat.options.length>0&&<>
-        <div style={S.sTitle}>オプション・追加</div>
-        {cat.options.map(opt=>(
-          <div key={opt.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f5eeee"}}>
+    {cat.options.length>0&&<div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>オプション</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {cat.options.map(opt=>{
+          const cnt=optionCounts[opt.key]||0;
+          return <div key={opt.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f5eeee"}}>
             <div>
               <div style={{fontSize:13,fontWeight:500}}>{opt.label}</div>
-              <div style={{fontSize:11,color:"#aaa"}}>{yen(opt.price)}{opt.perUnit?`/${opt.unitLabel}`:""}</div>
+              <div style={{fontSize:11,color:"#aaa"}}>{yen(opt.price)}{opt.perUnit?"/"+opt.unitLabel:""}</div>
             </div>
             {opt.perUnit
               ?<div style={{display:"flex",alignItems:"center",gap:8}}>
-                <button onClick={()=>setOptCount(opt.key,(optionCounts[opt.key]||0)-1)} style={{width:28,height:28,borderRadius:"50%",border:"1.5px solid #ddd",background:"#f5f5f5",cursor:"pointer",fontSize:16,lineHeight:1}}>−</button>
-                <span style={{fontSize:14,fontWeight:700,minWidth:20,textAlign:"center"}}>{optionCounts[opt.key]||0}</span>
-                <button onClick={()=>setOptCount(opt.key,(optionCounts[opt.key]||0)+1)} style={{width:28,height:28,borderRadius:"50%",border:"1.5px solid #c0392b",background:"#fff0f0",cursor:"pointer",fontSize:16,lineHeight:1,color:"#c0392b"}}>＋</button>
+                <button onClick={()=>setOptCount(opt.key,-1)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>－</button>
+                <span style={{minWidth:24,textAlign:"center",fontWeight:700}}>{cnt}</span>
+                <button onClick={()=>setOptCount(opt.key,1)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>＋</button>
               </div>
-              :<div onClick={()=>setOptCount(opt.key,!(optionCounts[opt.key]))} style={{
-                width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",
-                background:optionCounts[opt.key]?"#c0392b":"#ccc",transition:"background .2s"
-              }}>
-                <div style={{position:"absolute",top:3,left:optionCounts[opt.key]?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+              :<div onClick={()=>toggleOption(opt.key)} style={{width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",background:cnt?"#c0392b":"#ccc",transition:"background .2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:3,left:cnt?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
               </div>
             }
-          </div>
+          </div>;
+        })}
+      </div>
+    </div>}
+
+    <div style={{...S.card,marginBottom:12,background:"linear-gradient(135deg,#f0fdf4,#dcfce7)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontWeight:700,fontSize:15,color:"#166534"}}>見積合計</span>
+        <span style={{fontWeight:700,fontSize:24,color:"#166534"}}>{yen(grandTotal)}</span>
+      </div>
+      {grandTotal>0&&<div style={{marginTop:8,fontSize:11,color:"#4ade80"}}>
+        {selectedItem&&<div>{selectedItem.label}：{yen(selectedItem.price||0)}</div>}
+        {cat.options.filter(o=>optionCounts[o.key]>0).map(o=>(
+          <div key={o.key}>{o.label}{o.perUnit?` ×${optionCounts[o.key]}`:""}：{yen(o.perUnit?o.price*(optionCounts[o.key]||0):o.price)}</div>
         ))}
-      </>}
+      </div>}
     </div>
 
-    {/* 合計表示 */}
-    <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",marginBottom:4}}>見積もり合計</div>
-      {selectedItem&&<div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginBottom:4}}>{selectedItem.label} {yen(basePrice)}</div>}
-      {Object.entries(optionCounts).filter(([,v])=>v>0).map(([k,v])=>{
-        const o=cat.options.find(x=>x.key===k);
-        return o?<div key={k} style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>{o.label} {o.perUnit?`×${v} `:""}{yen(o.price*(o.perUnit?v:1))}</div>:null;
-      })}
-      <div style={{fontWeight:700,fontSize:28,marginTop:8}}>{yen(total)}</div>
-    </div>
-
-    {/* 案件登録 */}
     <div style={{...S.card,marginBottom:12}}>
-      <div style={S.sTitle}>📋 案件に登録</div>
-      <FR label="依頼者名"><input type="text" value={client} onChange={e=>setClient(e.target.value)} placeholder="鳥井さん"/></FR>
+      <div style={S.sTitle}>案件として保存</div>
+      <FR label="依頼者"><input type="text" value={client} onChange={e=>setClient(e.target.value)} placeholder="鳥井さん"/></FR>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
         <FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)}/></FR>
         <FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
       </div>
-      <FR label="メモ"><textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} placeholder="現場の特記事項など" style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
-      <button style={S.saveBtn} onClick={registerJob}>📋 案件管理に登録</button>
-    </div>
-
-    {/* 料金表参照 */}
-    <div style={{...S.card,marginBottom:12}}>
-      <div style={S.sTitle}>📄 料金表（参照用）</div>
-      <div style={{fontSize:11,color:"#888",lineHeight:1.8}}>
-        <b>基本工賃：</b>3,300円/時間・人<br/>
-        <b>出張費：</b>2,200円<br/>
-        <b>薬剤散布：</b>技術料3,300円＋資材費3,300円<br/>
-        <b>蜂の巣：</b>アシナガ10,000円／スズメ15,000円／キイロ20,000円<br/>
-        　サイズ加算：10-15cm +3,000円、15-20cm〜 +6,000円<br/>
-        　高所・難所 +3,000円〜<br/>
-        <b>ハウスクリーニング：</b>1R 10,000円〜4LDK 30,000円<br/>
-        　部屋追加 +6,000円/室、分譲・戸建て +13,000円
-      </div>
+      <FR label="メモ"><textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}} placeholder="備考・注意事項など"/></FR>
+      <button style={S.saveBtn} onClick={saveAsJob}>📋 案件タブに見積を追加</button>
     </div>
   </div>;
 }
