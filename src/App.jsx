@@ -5,7 +5,8 @@ const DEFAULT_PASSWORD = "nekono2024";
 const SK = {
   properties:"props", cases:"cases", cleaning:"clean", settings:"cfg",
   staff:"staff", monthcnt:"monthcnt", password:"password",
-  jobs:"jobs", customers:"customers"
+  jobs:"jobs", customers:"customers",
+  stayProps:"stayProps", stayClean:"stayClean", stayMonthCnt:"stayMc",
 };
 const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
@@ -30,6 +31,9 @@ const DEFAULT_PROPS = [
   {id:19, name:"アクセス", fee:14000, cnt:2},
   {id:20, name:"鞍山コーポ", fee:4000, cnt:2},
 ];
+// 宿泊清掃物件マスタ初期値（設定タブで追加・編集可）
+const DEFAULT_STAY_PROPS = [];
+
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
 const STATUS_LIST = ["見込み","見積済","確定","完了","キャンセル"];
 const STATUS_COLOR = {
@@ -61,6 +65,11 @@ function calcStaffSales(fee,monthCnt,staffCounts,names){
   const diff=distributed-sales.reduce((a,b)=>a+b,0);
   for(let i=names.length-1;i>=0;i--){if((staffCounts[names[i]]||0)>0){sales[i]+=diff;break;}}
   return sales;
+}
+
+// 宿泊清掃用計算：1回単価×回数（按分なし、スタッフ別集計）
+function calcStayStaffSales(unitPrice,staffCounts,names){
+  return names.map(st=>(unitPrice||0)*(staffCounts[st]||0));
 }
 
 function NumInput({value,onCommit,style,min=0}){
@@ -99,6 +108,10 @@ export default function App(){
   const [staffList,setStaffList]=useState(DEFAULT_STAFF);
   const [cleanData,setCleanData]=useState({});
   const [monthCntData,setMonthCntData]=useState({});
+  // 宿泊清掃
+  const [stayProps,setStayProps]=useState(DEFAULT_STAY_PROPS);
+  const [stayClean,setStayClean]=useState({});
+  const [stayMonthCnt,setStayMonthCnt]=useState({});
   const [cases,setCases]=useState([]);
   const [jobs,setJobs]=useState([]);
   const [customers,setCustomers]=useState([]);
@@ -113,14 +126,16 @@ export default function App(){
   useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf,mc,j,cu]=await Promise.all([
+      const [p,cl,ca,c,sf,mc,j,cu,sp,sc,smc]=await Promise.all([
         stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),stGet(SK.settings),
-        stGet(SK.staff),stGet(SK.monthcnt),stGet(SK.jobs),stGet(SK.customers)
+        stGet(SK.staff),stGet(SK.monthcnt),stGet(SK.jobs),stGet(SK.customers),
+        stGet(SK.stayProps),stGet(SK.stayClean),stGet(SK.stayMonthCnt),
       ]);
       if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca); if(c)setCfg(c);
       if(sf)setStaffList(sf.map(toStaffObj)); if(mc)setMonthCntData(mc);
       if(j){setJobs(j);setNewCount((j||[]).filter(x=>x.isNew&&x.status!=="完了"&&x.status!=="キャンセル").length);}
       if(cu)setCustomers(cu);
+      if(sp)setStayProps(sp); if(sc)setStayClean(sc); if(smc)setStayMonthCnt(smc);
       setLoading(false);
     })();
   },[authed]);
@@ -128,6 +143,9 @@ export default function App(){
   const saveProps=async v=>{setProps(v);await stSet(SK.properties,v);};
   const saveClean=async v=>{setCleanData(v);await stSet(SK.cleaning,v);};
   const saveMonthCnt=async v=>{setMonthCntData(v);await stSet(SK.monthcnt,v);};
+  const saveStayProps=async v=>{setStayProps(v);await stSet(SK.stayProps,v);};
+  const saveStayClean=async v=>{setStayClean(v);await stSet(SK.stayClean,v);};
+  const saveStayMonthCnt=async v=>{setStayMonthCnt(v);await stSet(SK.stayMonthCnt,v);};
   const saveCases=async v=>{setCases(v);await stSet(SK.cases,v);};
   const saveJobs=async v=>{setJobs(v);await stSet(SK.jobs,v);};
   const saveCustomers=async v=>{setCustomers(v);await stSet(SK.customers,v);};
@@ -143,7 +161,14 @@ export default function App(){
       if(!(mcKey(nm,p.id) in newMc))newMc[mcKey(nm,p.id)]=curCnt;
       stNames(staffList).forEach(s=>{const k=cdKey(nm,p.id,s);if(!(k in newClean))newClean[k]=0;});
     });
-    await saveClean(newClean);await saveMonthCnt(newMc);setMonth(nm);showToast(`✅ ${nm} にコピーしました`);
+    // 宿泊清掃も翌月初期化
+    const newSC={...stayClean};const newSMC={...stayMonthCnt};
+    stayProps.forEach(p=>{
+      stNames(staffList).forEach(s=>{const k=cdKey(nm,p.id,s);if(!(k in newSC))newSC[k]=0;});
+    });
+    await saveClean(newClean);await saveMonthCnt(newMc);
+    await saveStayClean(newSC);await saveStayMonthCnt(newSMC);
+    setMonth(nm);showToast(`✅ ${nm} にコピーしました`);
   };
 
   const completeJob=async(job)=>{
@@ -165,6 +190,7 @@ export default function App(){
 
   const tabs=[
     ["cleaning","🏠清掃"],
+    ["stay","🏨宿泊"],
     ["cases","📋売上"],
     ["jobs","🗂案件"+(newCount>0?"🆕":"")],
     ["future","📅来月〜"],
@@ -197,15 +223,115 @@ export default function App(){
     <div style={S.body}>
       {loading?<div style={S.empty}>読み込み中…</div>:<>
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
+        {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
-        {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} showToast={showToast}/>}
+        {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
+        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} showToast={showToast}/>}
       </>}
     </div>
+  </div>;
+}
+
+// ══════════════════════════════════════════
+// 🏨 宿泊清掃タブ
+// ══════════════════════════════════════════
+function StayTab({month,stayProps,staffList,stayClean,saveStayClean}){
+  const names=stNames(staffList);
+  const [memoPopup,setMemoPopup]=useState(null);
+
+  const getC=(pid,st)=>Number(stayClean[cdKey(month,pid,st)]||0);
+  const setC=useCallback(async(pid,st,num)=>{
+    await saveStayClean({...stayClean,[cdKey(month,pid,st)]:num});
+  },[month,stayClean,saveStayClean]);
+
+  const getPropSales=useCallback(p=>{
+    const counts={};names.forEach(st=>counts[st]=getC(p.id,st));
+    return calcStayStaffSales(p.unitPrice,counts,names);
+  },[month,stayProps,staffList,stayClean]);
+
+  const stTotal=st=>(stayProps||[]).reduce((s,p)=>{
+    const sales=getPropSales(p);
+    return s+(sales[names.indexOf(st)]||0);
+  },0);
+  const grand=names.reduce((s,st)=>s+stTotal(st),0);
+  const hasMemo=p=>p.address||p.note;
+
+  if(!stayProps||stayProps.length===0){
+    return <div style={{animation:"fadeUp .3s ease"}}>
+      <div style={S.empty}>
+        <div style={{fontSize:32,marginBottom:12}}>🏨</div>
+        <div style={{fontWeight:700,color:"#aaa",marginBottom:8}}>宿泊清掃物件が未登録です</div>
+        <div style={{fontSize:12,color:"#ccc"}}>⚙設定タブ →「🏨宿泊清掃物件マスタ」から物件を追加してください</div>
+      </div>
+    </div>;
+  }
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={S.staffBar}>
+      {names.map(st=><div key={st} style={S.staffCell}><div style={S.staffLabel}>{st}</div><div style={S.staffAmt}>{yen(stTotal(st))}</div></div>)}
+      <div style={{...S.staffCell,background:"#1e6091",border:"none"}}><div style={{...S.staffLabel,color:"rgba(255,255,255,0.7)"}}>合計</div><div style={{...S.staffAmt,color:"#fff"}}>{yen(grand)}</div></div>
+    </div>
+    <div style={S.tableWrap}><table>
+      <thead><tr>
+        <th style={{textAlign:"left",minWidth:110}}>物件名</th>
+        <th>1回単価</th>
+        {names.map(st=><th key={st} style={{color:"#1e6091"}}>{st}<br/>回数</th>)}
+        {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
+        <th>物件計</th>
+      </tr></thead>
+      <tbody>{(stayProps||[]).map(p=>{
+        const sales=getPropSales(p);
+        const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
+        const propTotal=sales.reduce((a,b)=>a+b,0);
+        return <tr key={p.id}>
+          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <span>{p.name}</span>
+              {hasMemo(p)&&<button onClick={()=>setMemoPopup(p)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"0 2px",lineHeight:1,color:"#1e6091",flexShrink:0}}>📍</button>}
+            </div>
+            {p.type&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{p.type==="minpaku"?"民泊":"マンスリー"}</div>}
+          </td>
+          <td style={{color:"#1e6091",fontWeight:600}}>{yen(p.unitPrice||0)}</td>
+          {names.map(st=><td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>)}
+          {sales.map((s,i)=><td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>)}
+          <td style={{fontWeight:700,color:totalCnt>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
+        </tr>;
+      })}</tbody>
+      <tfoot><tr style={{background:"#f0f7ff"}}>
+        <td style={{textAlign:"left",fontWeight:700}} colSpan={2}>合計</td>
+        {names.map(st=><td key={st}/>)}
+        {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#1e6091"}}>{yen(stTotal(st))}</td>)}
+        <td style={{fontWeight:700}}>{yen(grand)}</td>
+      </tr></tfoot>
+    </table></div>
+
+    {memoPopup&&<div style={S.modalBg} onClick={()=>setMemoPopup(null)}>
+      <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,fontSize:16,color:"#1e6091",marginBottom:16}}>📍 {memoPopup.name}</div>
+        {memoPopup.type&&<div style={{marginBottom:10}}>
+          <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>
+            {memoPopup.type==="minpaku"?"🏨 民泊":"🏢 マンスリー"}
+          </span>
+        </div>}
+        {memoPopup.address&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>住所</div>
+          <div style={{fontSize:14,fontWeight:500,color:"#333",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.6}}>{memoPopup.address}</div>
+          <a href={`https://maps.google.com/?q=${encodeURIComponent(memoPopup.address)}`} target="_blank" rel="noreferrer"
+            style={{display:"inline-block",marginTop:6,fontSize:12,color:"#1e40af",textDecoration:"none",background:"#dbeafe",borderRadius:6,padding:"4px 10px"}}>
+            🗺 Googleマップで開く
+          </a>
+        </div>}
+        {memoPopup.note&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>メモ</div>
+          <div style={{fontSize:13,color:"#555",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{memoPopup.note}</div>
+        </div>}
+        <button style={{...S.cancelBtn,width:"100%",marginTop:8}} onClick={()=>setMemoPopup(null)}>閉じる</button>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -648,7 +774,6 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   </div>;
 }
 
-// ── ② 修正：案件売上テーブルのくっつき問題を解消 ──
 function CasesTab({month,cases,staffList,saveCases,showToast}){
   const names=stNames(staffList);
   const blank=()=>({date:toDay(),name:"",staff:names[0]||"",payment:"現金",amount:""});
@@ -707,19 +832,38 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
   </div>;
 }
 
-function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,saveCfg,showToast}){
+function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stayClean,cases,cfg,saveCfg,showToast}){
   const [loc,setLoc]=useState(cfg);useEffect(()=>setLoc(cfg),[cfg]);
   const names=stNames(staffList);
   const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
   const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
+  const getStayC=(pid,st)=>Number(stayClean[cdKey(month,pid,st)]||0);
+
+  // 日常清掃集計
   const cleanBySt=useMemo(()=>{const m={};names.forEach(st=>m[st]=0);props.forEach(p=>{const counts={};names.forEach(st=>counts[st]=getC(p.id,st));const sales=calcStaffSales(p.fee,getMc(p.id),counts,names);names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);});return m;},[month,props,cleanData,monthCntData,staffList]);
+
+  // 宿泊清掃集計
+  const stayBySt=useMemo(()=>{
+    const m={};names.forEach(st=>m[st]=0);
+    (stayProps||[]).forEach(p=>{
+      const counts={};names.forEach(st=>counts[st]=getStayC(p.id,st));
+      const sales=calcStayStaffSales(p.unitPrice,counts,names);
+      names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);
+    });
+    return m;
+  },[month,stayProps,stayClean,staffList]);
+
   const caseBySt=useMemo(()=>{const filt=(cases||[]).filter(c=>c.date.startsWith(month));const m={};names.forEach(st=>m[st]={cash:0,xfer:0});filt.forEach(c=>{if(!m[c.staff])m[c.staff]={cash:0,xfer:0};if(c.payment==="現金")m[c.staff].cash+=c.amount;else m[c.staff].xfer+=c.amount;});return m;},[month,cases,staffList]);
-  const stSales=useMemo(()=>{const m={};names.forEach(st=>m[st]=(cleanBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0));return m;},[cleanBySt,caseBySt,staffList]);
+
+  const stSales=useMemo(()=>{const m={};names.forEach(st=>m[st]=(cleanBySt[st]||0)+(stayBySt[st]||0)+(caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0));return m;},[cleanBySt,stayBySt,caseBySt,staffList]);
+
   const total=names.reduce((s,st)=>s+(stSales[st]||0),0);
   const cleanTotal=names.reduce((s,st)=>s+(cleanBySt[st]||0),0);
+  const stayTotal=names.reduce((s,st)=>s+(stayBySt[st]||0),0);
   const cashT=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const caseXfer=(cases||[]).filter(c=>c.date.startsWith(month)&&c.payment==="振込").reduce((s,c)=>s+c.amount,0);
-  const xferT=caseXfer+cleanTotal;
+  const xferT=caseXfer+cleanTotal+stayTotal;
+
   const taxTargetNames=names.filter(st=>isTaxTarget(staffList.find(s=>toStaffObj(s).name===st)||st));
   const taxTargetTotal=taxTargetNames.reduce((s,st)=>s+(stSales[st]||0),0);
   const fixPct=total>0?(loc.fixedCost/total*100).toFixed(1):0;
@@ -733,10 +877,16 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
     <div style={{...S.card,background:"linear-gradient(135deg,#7a0000,#c0392b)",color:"#fff",marginBottom:12}}>
       <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 月末締め計算表 — {month}</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-        {names.map(st=><div key={st} style={S.closingCard}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div><div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div><div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>清掃 {yen(cleanBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}</div></div>)}
+        {names.map(st=><div key={st} style={S.closingCard}>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginBottom:2}}>{st}売上</div>
+          <div style={{fontWeight:700,fontSize:15}}>{yen(stSales[st]||0)}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2}}>
+            清掃 {yen(cleanBySt[st]||0)} / 宿泊 {yen(stayBySt[st]||0)} / 案件 {yen((caseBySt[st]?.cash||0)+(caseBySt[st]?.xfer||0))}
+          </div>
+        </div>)}
       </div>
       <div style={{display:"flex",gap:16,borderTop:"1px solid rgba(255,255,255,0.2)",paddingTop:10,flexWrap:"wrap"}}>
-        <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div><b>{yen(xferT)}</b><div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 案件 {yen(caseXfer)}</div></div>
+        <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>🏦 振込合計</div><b>{yen(xferT)}</b><div style={{fontSize:10,color:"rgba(255,255,255,0.45)"}}>清掃 {yen(cleanTotal)} + 宿泊 {yen(stayTotal)} + 案件 {yen(caseXfer)}</div></div>
         <div><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>💴 現金（案件）</div><b>{yen(cashT)}</b></div>
         <div style={{marginLeft:"auto"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>月売上合計</div><b style={{fontSize:22}}>{yen(total)}</b></div>
       </div>
@@ -764,7 +914,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
           <div style={{textAlign:"right"}}>{isT?<><span style={{fontSize:11,color:"#aaa",marginRight:8}}>売上比 {ratio}%</span><span style={{fontWeight:700,fontSize:16,color:"#2d6a4f"}}>{yen(salaries[st]||0)}</span></>:<span style={{fontSize:13,color:"#aaa"}}>按分対象外</span>}</div>
         </div>
         {isT&&<div style={S.barBg}><div style={{...S.bar,width:ratio+"%"}}/></div>}
-        <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
+        <div style={{fontSize:10,color:"#aaa",marginTop:3}}>清掃 {yen(cleanBySt[st]||0)} ／ 宿泊 {yen(stayBySt[st]||0)} ／ 案件現金 {yen(caseBySt[st]?.cash||0)} ／ 案件振込 {yen(caseBySt[st]?.xfer||0)}</div>
       </div>;})}
       <div style={{borderTop:"2px solid #eee",paddingTop:10,display:"flex",justifyContent:"space-between"}}><b>給与合計（按分対象）</b><b style={{color:"#2d6a4f"}}>{yen(taxTargetNames.reduce((s,st)=>s+(salaries[st]||0),0))}</b></div>
       <p style={{fontSize:10,color:"#bbb",marginTop:6}}>※荒牧さん給与は固定費に含む ※山辺ボーナスはねこのて給与から支払い</p>
@@ -772,18 +922,31 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,cases,cfg,save
   </div>;
 }
 
-// ── ① 修正：物件マスタに住所・呼出番号・備考列を追加 ──
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,showToast}){
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,showToast}){
   const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
+  const [lStayProps,setLStayProps]=useState(stayProps||[]);useEffect(()=>setLStayProps(stayProps||[]),[stayProps]);
+
   const updPropStr=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:v}:p));
   const updPropNum=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
   const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1,address:"",callNo:"",note:""}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
+
+  const updStayStr=(id,k,v)=>setLStayProps(lStayProps.map(p=>p.id===id?{...p,[k]:v}:p));
+  const updStayNum=(id,k,v)=>setLStayProps(lStayProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
+  const addStayProp=()=>setLStayProps([...lStayProps,{id:Date.now(),name:"",unitPrice:0,type:"minpaku",address:"",note:""}]);
+  const delStayProp=id=>{if(!confirm("削除しますか？"))return;setLStayProps(lStayProps.filter(p=>p.id!==id));};
+
   const toggleTax=i=>{const a=[...lStaff];a[i]={...a[i],taxTarget:!a[i].taxTarget};setLStaff(a);};
   const delStaff=i=>{if(!confirm("削除しますか？"))return;const a=[...lStaff];a.splice(i,1);setLStaff(a);};
-  const saveAll=async()=>{await saveProps(lProps);await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));await saveCfg(lCfg);showToast("✅ 保存しました");};
+  const saveAll=async()=>{
+    await saveProps(lProps);
+    await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));
+    await saveCfg(lCfg);
+    await saveStayProps(lStayProps);
+    showToast("✅ 保存しました");
+  };
 
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{...S.card,marginBottom:12}}>
@@ -802,7 +965,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
     </div>
 
     <div style={{...S.card,marginBottom:12}}>
-      <div style={S.sTitle}>🏠 物件マスタ</div>
+      <div style={S.sTitle}>🏠 物件マスタ（日常清掃）</div>
       <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
       <div style={S.tableWrap}><table>
         <thead><tr>
@@ -825,6 +988,38 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
         </tr>)}</tbody>
       </table></div>
       <button style={{...S.cancelBtn,marginTop:10}} onClick={addProp}>＋ 物件を追加</button>
+    </div>
+
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🏨 宿泊清掃物件マスタ</div>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>民泊・マンスリーの物件を登録します。1回単価×回数で売上計算します。</p>
+      {lStayProps.length===0
+        ?<div style={{textAlign:"center",color:"#ccc",padding:"20px 0",fontSize:13}}>物件がありません。「＋ 物件を追加」から登録してください</div>
+        :<div style={S.tableWrap}><table>
+          <thead><tr>
+            <th style={{textAlign:"left",minWidth:110}}>物件名</th>
+            <th style={{minWidth:60}}>種別</th>
+            <th style={{minWidth:90}}>1回単価(円)</th>
+            <th style={{textAlign:"left",minWidth:150}}>住所</th>
+            <th style={{textAlign:"left",minWidth:100}}>備考</th>
+            <th></th>
+          </tr></thead>
+          <tbody>{lStayProps.map(p=><tr key={p.id}>
+            <td><input type="text" value={p.name||""} onChange={e=>updStayStr(p.id,"name",e.target.value)} style={{width:"100%"}} placeholder="ゲストハウス〇〇"/></td>
+            <td>
+              <select value={p.type||"minpaku"} onChange={e=>updStayStr(p.id,"type",e.target.value)} style={{width:90}}>
+                <option value="minpaku">民泊</option>
+                <option value="monthly">マンスリー</option>
+              </select>
+            </td>
+            <td><NumInput value={p.unitPrice||0} onCommit={v=>updStayNum(p.id,"unitPrice",v)} style={{width:90}}/></td>
+            <td><input type="text" value={p.address||""} onChange={e=>updStayStr(p.id,"address",e.target.value)} style={{width:"100%",minWidth:140}} placeholder="福岡市…"/></td>
+            <td><input type="text" value={p.note||""} onChange={e=>updStayStr(p.id,"note",e.target.value)} style={{width:"100%",minWidth:100}} placeholder="メモ"/></td>
+            <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delStayProp(p.id)}>✕</button></td>
+          </tr>)}</tbody>
+        </table></div>
+      }
+      <button style={{...S.cancelBtn,marginTop:10}} onClick={addStayProp}>＋ 物件を追加</button>
     </div>
 
     <div style={{...S.card,marginBottom:12}}>
