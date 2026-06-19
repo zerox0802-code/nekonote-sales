@@ -575,6 +575,7 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
 
 function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,saveMonthCnt,carryOver}){
   const names=stNames(staffList);
+  const [memoPopup,setMemoPopup]=useState(null);
   const getMc=pid=>monthCntData[mcKey(month,pid)]??(props.find(p=>p.id===pid)?.cnt||0);
   const getC=(pid,st)=>Number(cleanData[cdKey(month,pid,st)]||0);
   const setMc=useCallback(async(pid,num)=>{await saveMonthCnt({...monthCntData,[mcKey(month,pid)]:num});},[month,monthCntData,saveMonthCnt]);
@@ -582,6 +583,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   const getPropSales=useCallback(p=>{const mc=getMc(p.id);const counts={};names.forEach(st=>counts[st]=getC(p.id,st));return calcStaffSales(p.fee,mc,counts,names);},[month,props,staffList,cleanData,monthCntData]);
   const stTotal=st=>props.reduce((s,p)=>{const sales=getPropSales(p);return s+(sales[names.indexOf(st)]||0);},0);
   const grand=names.reduce((s,st)=>s+stTotal(st),0);
+  const hasMemo=p=>p.address||p.callNo||p.note;
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.ctrlRow}><button style={S.redBtn} onClick={carryOver}>📋 翌月コピー</button></div>
     <div style={S.staffBar}>
@@ -600,7 +602,12 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
         const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
         const propTotal=sales.reduce((a,b)=>a+b,0);
         return <tr key={p.id}>
-          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>{p.name}</td>
+          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <span>{p.name}</span>
+              {hasMemo(p)&&<button onClick={()=>setMemoPopup(p)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"0 2px",lineHeight:1,color:"#c0392b",flexShrink:0}}>📍</button>}
+            </div>
+          </td>
           <td>{yen(p.fee)}</td>
           <td><NumInput value={mc} onCommit={num=>setMc(p.id,num)} min={1} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>
           {names.map(st=><td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>)}
@@ -615,6 +622,29 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
         <td style={{fontWeight:700}}>{yen(grand)}</td>
       </tr></tfoot>
     </table></div>
+
+    {memoPopup&&<div style={S.modalBg} onClick={()=>setMemoPopup(null)}>
+      <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,fontSize:16,color:"#8b0000",marginBottom:16}}>📍 {memoPopup.name}</div>
+        {memoPopup.address&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>住所</div>
+          <div style={{fontSize:14,fontWeight:500,color:"#333",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.6}}>{memoPopup.address}</div>
+          <a href={`https://maps.google.com/?q=${encodeURIComponent(memoPopup.address)}`} target="_blank" rel="noreferrer"
+            style={{display:"inline-block",marginTop:6,fontSize:12,color:"#1e40af",textDecoration:"none",background:"#dbeafe",borderRadius:6,padding:"4px 10px"}}>
+            🗺 Googleマップで開く
+          </a>
+        </div>}
+        {memoPopup.callNo&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>呼出番号</div>
+          <div style={{fontSize:16,fontWeight:700,color:"#8b0000",background:"#fff5f5",borderRadius:8,padding:"10px 12px"}}>{memoPopup.callNo}</div>
+        </div>}
+        {memoPopup.note&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>メモ</div>
+          <div style={{fontSize:13,color:"#555",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{memoPopup.note}</div>
+        </div>}
+        <button style={{...S.cancelBtn,width:"100%",marginTop:8}} onClick={()=>setMemoPopup(null)}>閉じる</button>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -667,7 +697,7 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
         <tbody>{filtered.map(c=><tr key={c.id}>
           <td style={{whiteSpace:"nowrap",fontSize:11,letterSpacing:"-0.3px"}}>{c.date}</td>
           <td style={{textAlign:"left",wordBreak:"break-all",fontSize:12}}>{c.name}</td>
-          <td style={{textAlign:"center",fontSize:12}}>{c.staff}</td>
+          <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{c.staff?c.staff[0]:"?"}</span></td>
           <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
           <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
           <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
