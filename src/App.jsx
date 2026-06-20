@@ -796,12 +796,12 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
     <div style={S.formCard}>
       <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
-      <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
-      <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
+        <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
         <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
-        <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
       </div>
+      <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
+      <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
       <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="15000" style={{width:"100%"}}/></FR>
       <div style={{display:"flex",gap:8,marginTop:4}}>
         {editId&&<button style={S.cancelBtn} onClick={()=>{setEditId(null);setForm(blank());}}>キャンセル</button>}
@@ -810,19 +810,19 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     </div>
     <div style={S.tableWrap}>
       {filtered.length===0?<div style={S.empty}>この月の案件はありません</div>:
-      <table>
+      <table style={{tableLayout:"fixed",width:"100%"}}>
         <thead><tr>
-          <th style={{minWidth:88,whiteSpace:"nowrap"}}>日付</th>
-          <th style={{textAlign:"left",minWidth:130}}>案件名</th>
-          <th style={{minWidth:44}}>担当</th>
-          <th>支払</th>
-          <th style={{textAlign:"right",minWidth:80}}>金額</th>
-          <th></th>
+          <th style={{width:54}}>日付</th>
+          <th style={{textAlign:"left",width:"auto"}}>案件名</th>
+          <th style={{width:30}}>担当</th>
+          <th style={{width:30}}>支払</th>
+          <th style={{textAlign:"right",width:62}}>金額</th>
+          <th style={{width:40}}></th>
         </tr></thead>
         <tbody>{filtered.map(c=><tr key={c.id}>
-          <td style={{whiteSpace:"nowrap",fontSize:11,letterSpacing:"-0.3px"}}>{c.date}</td>
-          <td style={{textAlign:"left",wordBreak:"break-all",fontSize:12}}>{c.name}</td>
-          <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{c.staff?c.staff[0]:"?"}</span></td>
+          <td style={{fontSize:9,letterSpacing:"-0.5px",padding:"7px 2px"}}>{c.date.slice(5).replace("-","/")}</td>
+          <td style={{textAlign:"left",wordBreak:"break-all",fontSize:11,padding:"7px 4px"}}>{c.name}</td>
+          <td style={{textAlign:"center",padding:"7px 2px"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:10,fontWeight:700}}>{c.staff?c.staff[0]:"?"}</span></td>
           <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
           <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
           <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
