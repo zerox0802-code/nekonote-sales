@@ -796,9 +796,9 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
     <div style={S.formCard}>
       <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-        <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></FR>
-        <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px",marginBottom:10}}>
+        <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+        <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
       </div>
       <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
       <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
@@ -823,9 +823,9 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
           <td style={{fontSize:9,letterSpacing:"-0.5px",padding:"7px 2px"}}>{c.date.slice(5).replace("-","/")}</td>
           <td style={{textAlign:"left",wordBreak:"break-all",fontSize:11,padding:"7px 4px"}}>{c.name}</td>
           <td style={{textAlign:"center",padding:"7px 2px"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:10,fontWeight:700}}>{c.staff?c.staff[0]:"?"}</span></td>
-          <td><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer)}}>{c.payment==="現金"?"現":"振"}</span></td>
-          <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(c.amount)}</td>
-          <td><button style={S.iconBtn} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd"}} onClick={()=>del(c.id)}>✕</button></td>
+          <td style={{padding:"7px 2px"}}><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer),padding:"1px 5px",fontSize:10}}>{c.payment==="現金"?"現":"振"}</span></td>
+          <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f",fontSize:11,padding:"7px 2px"}}>{yen(c.amount)}</td>
+          <td style={{padding:"7px 0"}}><button style={{...S.iconBtn,fontSize:11,padding:"2px 3px"}} onClick={()=>startEdit(c)}>✏</button><button style={{...S.iconBtn,color:"#ddd",fontSize:11,padding:"2px 3px"}} onClick={()=>del(c.id)}>✕</button></td>
         </tr>)}</tbody>
       </table>}
     </div>
