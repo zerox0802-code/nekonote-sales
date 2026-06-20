@@ -484,11 +484,11 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
         </FR>
         <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-          <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})}/></FR>
-          <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
-          <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
-          <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})}><option>振込</option><option>現金</option></select></FR>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
+          <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+          <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+          <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
+          <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}><option>振込</option><option>現金</option></select></FR>
         </div>
         <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="確定後に入力"/></FR>
         <FR label="現場住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
@@ -796,9 +796,9 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
     <div style={S.formCard}>
       <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px",marginBottom:10}}>
-        <FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
-        <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+      <div style={{display:"flex",gap:16,marginBottom:10}}>
+        <div style={{flex:1,minWidth:0}}><FR label="日付"><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        <div style={{flex:1,minWidth:0}}><FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR></div>
       </div>
       <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
       <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
@@ -1294,9 +1294,9 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>案件として保存</div>
       <FR label="依頼者"><input type="text" value={client} onChange={e=>setClient(e.target.value)} placeholder="鳥井さん"/></FR>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
-        <FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)}/></FR>
-        <FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
+        <FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+        <FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
       </div>
       <FR label="メモ"><textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}} placeholder="備考・注意事項など"/></FR>
       <button style={S.saveBtn} onClick={saveAsJob}>📋 案件タブに見積を追加</button>
