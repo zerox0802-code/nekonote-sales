@@ -189,11 +189,11 @@ export default function App(){
   if(!authed)return <Login onLogin={()=>setAuthed(true)} password={password}/>;
 
   const tabs=[
+    ["jobs","🗂案件"+(newCount>0?"🆕":"")],
+    ["future","📅来月〜"],
     ["cleaning","🏠清掃"],
     ["stay","🏨宿泊"],
     ["cases","📋売上"],
-    ["jobs","🗂案件"+(newCount>0?"🆕":"")],
-    ["future","📅来月〜"],
     ["estimate","💴見積"],
     ["customers","👥顧客"],
     ["closing","📊締め"],
@@ -336,7 +336,7 @@ function StayTab({month,stayProps,staffList,stayClean,saveStayClean}){
 }
 
 function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast}){
-  const [view,setView]=useState("list");
+  const [view,setView]=useState("table");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
   const [editJob,setEditJob]=useState(null);
@@ -484,7 +484,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
         </FR>
         <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
           <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
           <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
           <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
@@ -605,9 +605,9 @@ function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
         const ds=String(d).padStart(2,"0");
         const dj=jobsByDate[ds]||[];
         const isToday=todayD===ds&&calMonth===toMonth();
-        return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":"1px solid #f0ece4",overflow:"hidden",minWidth:0}}>
+        return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":dj.length>0?"#fffaf5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":dj.length>0?"1.5px solid #f0c89a":"1px solid #f0ece4",overflow:"hidden",minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:isToday?"#e03030":"#333",marginBottom:2}}>{d}</div>
-          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};const short=j.client.length>4?j.client.slice(0,4)+"…":j.client;return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 3px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{short}</div>;})}
+          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};const short=j.client.length>4?j.client.slice(0,4)+"…":j.client;return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 3px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%",border:`1px solid ${sc.border||"#ddd"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{short}</span><span style={{flexShrink:0,fontSize:8,opacity:0.7}}>✏️</span></div>;})}
         </div>;
       })}
     </div>
@@ -1294,9 +1294,9 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>案件として保存</div>
       <FR label="依頼者"><input type="text" value={client} onChange={e=>setClient(e.target.value)} placeholder="鳥井さん"/></FR>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
-        <FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR>
-        <FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+      <div style={{display:"flex",gap:16}}>
+        <div style={{flex:1,minWidth:0}}><FR label="作業日"><input type="date" value={workDate} onChange={e=>setWorkDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        <div style={{flex:1,minWidth:0}}><FR label="担当"><select value={staff} onChange={e=>setStaff(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR></div>
       </div>
       <FR label="メモ"><textarea value={memo} onChange={e=>setMemo(e.target.value)} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}} placeholder="備考・注意事項など"/></FR>
       <button style={S.saveBtn} onClick={saveAsJob}>📋 案件タブに見積を追加</button>
