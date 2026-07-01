@@ -251,7 +251,6 @@ function StayTab({month,stayProps,staffList,stayClean,saveStayClean,stayExtra,sa
     await saveStayExtra({...(stayExtra||{}),[exKey(month,pid)]:num});
   },[month,stayExtra,saveStayExtra]);
 
-  // 追加料金は回数>0の先頭スタッフに全額加算
   const getExtraStaff=(p)=>names.find(s=>getC(p.id,s)>0)||null;
 
   const getPropSales=useCallback(p=>{
@@ -636,10 +635,13 @@ function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
   </div>;
 }
 
+// ══════════════════════════════════════════
+// 👥 顧客タブ（メモ欄追加）
+// ══════════════════════════════════════════
 function CustomersTab({customers,saveCustomers,jobs,showToast}){
   const [selected,setSelected]=useState(null);
   const [editMode,setEditMode]=useState(false);
-  const [form,setForm]=useState({name:"",address:"",phone:""});
+  const [form,setForm]=useState({name:"",address:"",phone:"",memo:""});
   const custJobs=useMemo(()=>{if(!selected)return[];return (jobs||[]).filter(j=>j.client===selected.name).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));},[selected,jobs]);
   const saveEdit=async()=>{
     if(!form.name){showToast("⚠ 顧客名は必須");return;}
@@ -655,6 +657,7 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
       <FR label="顧客名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="鳥井さん"/></FR>
       <FR label="住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
       <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
+      <FR label="メモ"><textarea value={form.memo||""} onChange={e=>setForm({...form,memo:e.target.value})} rows={3} placeholder="アレルギー・鍵の場所・注意事項など" style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
       <div style={{display:"flex",gap:8,marginTop:4}}><button style={S.cancelBtn} onClick={()=>setEditMode(false)}>キャンセル</button><button style={S.saveBtn} onClick={saveEdit}>保存</button></div>
     </div>
   </div>;
@@ -663,13 +666,17 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
     <button onClick={()=>setSelected(null)} style={{...S.cancelBtn,marginBottom:12,fontSize:12}}>← 一覧に戻る</button>
     <div style={{...S.card,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:700,fontSize:18}}>{selected.name}</div>
           {selected.address&&<div style={{fontSize:12,color:"#888",marginTop:4}}>📍 {selected.address}</div>}
           {selected.phone&&<a href={`tel:${selected.phone}`} style={{display:"block",fontSize:12,color:"#c0392b",marginTop:4,textDecoration:"none"}}>📞 {selected.phone}</a>}
+          {selected.memo&&<div style={{marginTop:10,background:"#faf8f5",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:10,color:"#aaa",marginBottom:4}}>📝 メモ</div>
+            <div style={{fontSize:13,color:"#555",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{selected.memo}</div>
+          </div>}
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{setForm({name:selected.name,address:selected.address||"",phone:selected.phone||""});setEditMode(true);}} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>✏️</button>
+        <div style={{display:"flex",gap:8,marginLeft:8,flexShrink:0}}>
+          <button onClick={()=>{setForm({name:selected.name,address:selected.address||"",phone:selected.phone||"",memo:selected.memo||""});setEditMode(true);}} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>✏️</button>
           <button onClick={()=>del(selected.id)} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11,color:"#e74c3c"}}>✕</button>
         </div>
       </div>
@@ -695,7 +702,7 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
       <div style={{fontSize:13,color:"#888"}}>{(customers||[]).length}件の顧客</div>
-      <button onClick={()=>{setSelected(null);setForm({name:"",address:"",phone:""});setEditMode(true);}} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 顧客を追加</button>
+      <button onClick={()=>{setSelected(null);setForm({name:"",address:"",phone:"",memo:""});setEditMode(true);}} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 顧客を追加</button>
     </div>
     {(customers||[]).length===0?<div style={S.empty}>顧客データがありません<br/><span style={{fontSize:11}}>案件管理で案件を追加すると自動で登録されます</span></div>
     :(customers||[]).map(c=>{
@@ -703,12 +710,13 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
       const lj=cj.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
       return <div key={c.id} onClick={()=>setSelected(c)} style={{...S.card,cursor:"pointer",marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
             {c.phone&&<a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#c0392b",textDecoration:"none"}}>📞 {c.phone}</a>}
             {c.address&&<div style={{fontSize:11,color:"#888",marginTop:2}}>📍 {c.address.length>20?c.address.slice(0,20)+"…":c.address}</div>}
+            {c.memo&&<div style={{fontSize:11,color:"#aaa",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {c.memo.length>24?c.memo.slice(0,24)+"…":c.memo}</div>}
           </div>
-          <div style={{textAlign:"right",fontSize:11,color:"#aaa"}}>
+          <div style={{textAlign:"right",fontSize:11,color:"#aaa",flexShrink:0,marginLeft:8}}>
             <div>案件 {cj.length}件</div>
             {lj&&<div>最終: {lj.workDate||"日付なし"}</div>}
           </div>
@@ -860,7 +868,6 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stay
 
   const cleanBySt=useMemo(()=>{const m={};names.forEach(st=>m[st]=0);props.forEach(p=>{const counts={};names.forEach(st=>counts[st]=getC(p.id,st));const sales=calcStaffSales(p.fee,getMc(p.id),counts,names);names.forEach((st,i)=>m[st]=(m[st]||0)+sales[i]);});return m;},[month,props,cleanData,monthCntData,staffList]);
 
-  // 宿泊清掃集計（追加料金含む）
   const stayBySt=useMemo(()=>{
     const m={};names.forEach(st=>m[st]=0);
     (stayProps||[]).forEach(p=>{
