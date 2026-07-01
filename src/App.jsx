@@ -100,7 +100,7 @@ function Login({onLogin,password}){
 
 export default function App(){
   const [authed,setAuthed]=useState(false);
-  const [tab,setTab]=useState("cleaning");
+  const [tab,setTab]=useState("jobs");
   const [month,setMonth]=useState(toMonth());
   const [props,setProps]=useState(DEFAULT_PROPS);
   const [staffList,setStaffList]=useState(DEFAULT_STAFF);
@@ -358,15 +358,17 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
   const [editJob,setEditJob]=useState(null);
-  const [calMonth,setCalMonth]=useState(toMonth());
+  const [listMonth,setListMonth]=useState(toMonth());
   const names=stNames(staffList);
   const blank=()=>({client:"",content:"",status:"見積済",workDate:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:""});
   const [form,setForm]=useState(blank());
+  const calMonth=listMonth||toMonth();
+  const setCalMonth=m=>setListMonth(m);
 
   const filtered=useMemo(()=>{
-    const cur=toMonth();
     let r=(jobs||[]).filter(j=>{
-      if(j.workDate&&j.workDate>cur+"-31")return false;
+      if(!j.workDate)return true;
+      if(listMonth)return j.workDate.startsWith(listMonth);
       return true;
     });
     if(filterStatus!=="全て")r=r.filter(j=>j.status===filterStatus);
@@ -376,7 +378,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       if(b.workDate)return 1;
       return (b.createdAt||0)-(a.createdAt||0);
     });
-  },[jobs,filterStatus]);
+  },[jobs,filterStatus,listMonth]);
 
   const openForm=(job=null)=>{
     if(job){setForm({...job,amount:String(job.amount||"")});setEditJob(job.id);}
@@ -421,6 +423,10 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
             background:filterStatus===s?"#c0392b":"#fff",color:filterStatus===s?"#fff":"#888",borderColor:filterStatus===s?"#c0392b":"#ddd"
           }}>{s}</button>
         ))}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <input type="month" value={listMonth} onChange={e=>setListMonth(e.target.value)} style={{width:132,padding:"5px 8px",fontSize:12}}/>
+        <button onClick={()=>setListMonth("")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:!listMonth?"#c0392b":"#f5f5f5",color:!listMonth?"#fff":"#666"}}>全期間</button>
       </div>
       <div style={{display:"flex",gap:6,marginLeft:"auto"}}>
         <div style={{display:"flex",gap:4}}>
