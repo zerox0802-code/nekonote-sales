@@ -170,6 +170,20 @@ export default function App(){
   };
 
   const completeJob=async(job)=>{
+    // 🏨 宿泊清掃（民泊・マンスリー）案件：完了時に宿泊タブの回数へ自動反映
+    if(job.jobType==="stay"){
+      if(!job.stayPropId){showToast("⚠ 物件を選択してください");return;}
+      const wd=job.workDate||toDay();
+      const mo=wd.slice(0,7);
+      const key=cdKey(mo,job.stayPropId,job.staff);
+      const newCnt=Number(stayClean[key]||0)+1;
+      await saveStayClean({...stayClean,[key]:newCnt});
+      const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
+      await saveJobs(updated);
+      setNewCount(n=>Math.max(0,n-1));
+      showToast(`✅ 完了！宿泊タブ（${mo}）の回数に反映しました`);
+      return;
+    }
     if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return;}
     const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
     await saveJobs(updated);
@@ -223,7 +237,7 @@ export default function App(){
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
-        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast}/>}
+        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
@@ -353,14 +367,14 @@ function StayTab({month,stayProps,staffList,stayClean,saveStayClean,stayExtra,sa
   </div>;
 }
 
-function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast}){
+function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps}){
   const [view,setView]=useState("table");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
   const [editJob,setEditJob]=useState(null);
   const [listMonth,setListMonth]=useState(toMonth());
   const names=stNames(staffList);
-  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:""});
+  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:"",jobType:"normal",stayPropId:""});
   const [form,setForm]=useState(blank());
   const calMonth=listMonth||toMonth();
   const setCalMonth=m=>setListMonth(m);
@@ -381,7 +395,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   },[jobs,filterStatus,listMonth]);
 
   const openForm=(job=null)=>{
-    if(job){setForm({...job,amount:String(job.amount||"")});setEditJob(job.id);}
+    if(job){setForm({...blank(),...job,amount:String(job.amount||"")});setEditJob(job.id);}
     else{setForm(blank());setEditJob(null);}
     setShowForm(true);
   };
@@ -389,21 +403,31 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     const c=(customers||[]).find(c=>c.name===name);
     setForm(f=>({...f,client:name,address:c?.address||f.address,phone:c?.phone||f.phone}));
   };
+  const selectStayProp=pid=>{
+    const id=pid?Number(pid):"";
+    const sp=(stayProps||[]).find(p=>p.id===id);
+    setForm(f=>({...f,stayPropId:id,content:sp?`${sp.name} 清掃`:"",client:f.client||(sp?sp.name:""),amount:sp?String(sp.unitPrice||0):f.amount}));
+  };
   const saveJob=async()=>{
-    if(!form.client||!form.content){showToast("⚠ 依頼者・依頼内容は必須");return;}
+    if(form.jobType==="stay"){
+      if(!form.stayPropId){showToast("⚠ 物件を選択してください");return;}
+    }else{
+      if(!form.client||!form.content){showToast("⚠ 依頼者・依頼内容は必須");return;}
+    }
     const now=Date.now();
+    const payload={...form,amount:Number(form.amount)||0};
     if(editJob){
-      await saveJobs((jobs||[]).map(j=>j.id===editJob?{...form,id:editJob,amount:Number(form.amount)||0,updatedAt:now}:j));
+      await saveJobs((jobs||[]).map(j=>j.id===editJob?{...payload,id:editJob,updatedAt:now}:j));
       showToast("✅ 更新しました");
     }else{
-      const nj={...form,id:now,amount:Number(form.amount)||0,createdAt:now,isNew:true};
+      const nj={...payload,id:now,createdAt:now,isNew:true};
       await saveJobs([nj,...(jobs||[])]);
-      if(form.client){
+      if(form.jobType!=="stay"&&form.client){
         const ex=(customers||[]).find(c=>c.name===form.client);
         if(!ex)await saveCustomers([...(customers||[]),{id:now,name:form.client,address:form.address,phone:form.phone}]);
         else if(form.address&&!ex.address)await saveCustomers((customers||[]).map(c=>c.name===form.client?{...c,address:form.address,phone:form.phone}:c));
       }
-      showToast("✅ 案件を追加しました！");
+      showToast(form.jobType==="stay"?"✅ 宿泊清掃の予定を追加しました！":"✅ 案件を追加しました！");
     }
     setShowForm(false);setEditJob(null);setForm(blank());
   };
@@ -413,6 +437,8 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     await saveJobs((jobs||[]).map(j=>j.id===job.id?{...j,status,isNew:false}:j));
     showToast(`✅ ${status} に変更しました`);
   };
+  const stayPropName=pid=>(stayProps||[]).find(p=>p.id===Number(pid))?.name||"";
+  const locked=editJob&&form.status==="完了"&&form.jobType==="stay";
 
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
@@ -453,7 +479,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           return <tr key={job.id} style={{cursor:"pointer"}} onClick={()=>openForm(job)}>
             <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               {job.isNew&&job.status!=="完了"&&job.status!=="キャンセル"&&<span style={{background:"#e03030",color:"#fff",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4}}>NEW</span>}
-              {job.client}
+              {job.jobType==="stay"&&"🏨 "}{job.client}
             </td>
             <td style={{textAlign:"left",color:"#666",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
             <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"−"}</td>
@@ -476,7 +502,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
             <span style={{position:"absolute",top:10,right:10,background:"#e03030",color:"#fff",fontSize:10,fontWeight:700,borderRadius:6,padding:"2px 6px"}}>🆕 NEW</span>}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
             <div>
-              <div style={{fontWeight:700,fontSize:14}}>{job.client}</div>
+              <div style={{fontWeight:700,fontSize:14}}>{job.jobType==="stay"&&"🏨 "}{job.client}</div>
               <div style={{fontSize:12,color:"#666",marginTop:2}}>{job.content}</div>
             </div>
             <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:700,flexShrink:0,marginLeft:8}}>{job.status}</span>
@@ -492,8 +518,8 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <button onClick={()=>openForm(job)} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11,flex:1}}>✏️ 編集</button>
             {job.status==="見積済"&&<button onClick={()=>changeStatus(job,"確定")} style={{flex:1,padding:"6px 0",background:"#dbeafe",border:"1.5px solid #93c5fd",borderRadius:8,fontSize:11,cursor:"pointer",color:"#1e40af",fontWeight:700}}>📋 確定にする</button>}
-            {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{flex:1,padding:"6px 0",background:"#dcfce7",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,cursor:"pointer",color:"#166534",fontWeight:700}}>✅ 完了→売上反映</button>}
-            {job.status==="完了"&&<div style={{flex:1,padding:"6px 0",background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,color:"#166534",fontWeight:700,textAlign:"center"}}>💰 売上反映済</div>}
+            {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{flex:1,padding:"6px 0",background:"#dcfce7",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,cursor:"pointer",color:"#166534",fontWeight:700}}>{job.jobType==="stay"?"✅ 完了→回数反映":"✅ 完了→売上反映"}</button>}
+            {job.status==="完了"&&<div style={{flex:1,padding:"6px 0",background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,color:"#166534",fontWeight:700,textAlign:"center"}}>{job.jobType==="stay"?"🏨 回数反映済":"💰 売上反映済"}</div>}
             <button onClick={()=>deleteJob(job.id)} style={{padding:"6px 10px",background:"none",border:"1.5px solid #eee",borderRadius:8,fontSize:11,cursor:"pointer",color:"#ccc"}}>✕</button>
           </div>
         </div>;
@@ -503,21 +529,51 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     {showForm&&<div style={S.modalBg} onClick={()=>setShowForm(false)}>
       <div style={S.modal} onClick={e=>e.stopPropagation()}>
         <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>{editJob?"✏️ 案件を編集":"➕ 案件を追加"}</div>
-        <FR label="依頼者">
-          <input type="text" value={form.client} onChange={e=>{setForm({...form,client:e.target.value});selectCustomer(e.target.value);}} placeholder="鳥井さん" list="clist"/>
-          <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+
+        <FR label="案件タイプ">
+          <div style={{display:"flex",gap:8}}>
+            <button type="button" disabled={locked} onClick={()=>setForm({...form,jobType:"normal"})}
+              style={{...S.seg,...(form.jobType!=="stay"?{background:"#fff5f5",borderColor:"#c0392b",color:"#c0392b",fontWeight:700}:{}),opacity:locked?0.5:1}}>通常案件</button>
+            <button type="button" disabled={locked} onClick={()=>setForm({...form,jobType:"stay",status:form.status==="見積済"?"確定":form.status})}
+              style={{...S.seg,...(form.jobType==="stay"?{background:"#eff6ff",borderColor:"#1e6091",color:"#1e6091",fontWeight:700}:{}),opacity:locked?0.5:1}}>🏨宿泊清掃</button>
+          </div>
         </FR>
-        <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
-          <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
-          <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+
+        {form.jobType==="stay"?<>
+          <FR label="物件（民泊・マンスリー）">
+            <select value={form.stayPropId||""} disabled={locked} onChange={e=>selectStayProp(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}>
+              <option value="">選択してください</option>
+              {(stayProps||[]).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FR>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
+            <FR label="作業日"><input type="date" value={form.workDate} disabled={locked} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+            <FR label="担当"><select value={form.staff} disabled={locked} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+          </div>
           <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
-          <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}><option>振込</option><option>現金</option></select></FR>
-        </div>
-        <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="確定後に入力"/></FR>
-        <FR label="現場住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
-        <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
-        <FR label="メモ"><textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
+          <FR label="メモ"><textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
+          {locked&&<div style={{fontSize:11,color:"#888",background:"#f5f5f5",borderRadius:8,padding:"8px 10px",marginBottom:10}}>🔒 完了済みのため物件・作業日・担当は変更できません（回数の反映済みです）</div>}
+          {!locked&&form.stayPropId&&<div style={{fontSize:11,color:"#1e6091",background:"#eff6ff",borderRadius:8,padding:"8px 10px",marginBottom:4}}>
+            💡「完了」にすると宿泊タブ（{stayPropName(form.stayPropId)}・{form.staff}）の回数に自動で+1されます。金額の入力は不要です。
+          </div>}
+        </>:<>
+          <FR label="依頼者">
+            <input type="text" value={form.client} onChange={e=>{setForm({...form,client:e.target.value});selectCustomer(e.target.value);}} placeholder="鳥井さん" list="clist"/>
+            <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+          </FR>
+          <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
+            <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+            <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+            <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
+            <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}><option>振込</option><option>現金</option></select></FR>
+          </div>
+          <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="確定後に入力"/></FR>
+          <FR label="現場住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
+          <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
+          <FR label="メモ"><textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
+        </>}
+
         <div style={{display:"flex",gap:8,marginTop:8}}>
           <button style={S.cancelBtn} onClick={()=>setShowForm(false)}>キャンセル</button>
           <button style={S.saveBtn} onClick={saveJob}>{editJob?"更新":"保存"}</button>
@@ -583,7 +639,7 @@ function FutureTab({jobs,saveJobs,staffList,setTab,showToast}){
             <tbody>{mJobs.map(job=>{
               const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
               return <tr key={job.id}>
-                <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.client}</td>
+                <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.jobType==="stay"&&"🏨 "}{job.client}</td>
                 <td style={{textAlign:"left",color:"#666",fontSize:11,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
                 <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"未定"}</td>
                 <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
@@ -631,7 +687,7 @@ function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
         const isToday=todayD===ds&&calMonth===toMonth();
         return <div key={d} style={{minHeight:54,background:isToday?"#fff5f5":dj.length>0?"#fffaf5":"#fafafa",borderRadius:8,padding:"4px 3px",border:isToday?"2px solid #e03030":dj.length>0?"1.5px solid #f0c89a":"1px solid #f0ece4",overflow:"hidden",minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:isToday?"#e03030":"#333",marginBottom:2}}>{d}</div>
-          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};const short=j.client.length>4?j.client.slice(0,4)+"…":j.client;return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 3px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%",border:`1px solid ${sc.border||"#ddd"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{short}</span><span style={{flexShrink:0,fontSize:8,opacity:0.7}}>✏️</span></div>;})}
+          {dj.map(j=>{const sc=STATUS_COLOR[j.status]||{};const short=(j.jobType==="stay"?"🏨":"")+(j.client.length>4?j.client.slice(0,4)+"…":j.client);return <div key={j.id} onClick={()=>onClickJob(j)} style={{fontSize:9,background:sc.bg||"#eee",color:sc.color||"#333",borderRadius:4,padding:"1px 3px",marginBottom:1,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%",border:`1px solid ${sc.border||"#ddd"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{short}</span><span style={{flexShrink:0,fontSize:8,opacity:0.7}}>✏️</span></div>;})}
         </div>;
       })}
     </div>
