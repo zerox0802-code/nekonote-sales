@@ -374,7 +374,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const [editJob,setEditJob]=useState(null);
   const [listMonth,setListMonth]=useState(toMonth());
   const names=stNames(staffList);
-  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:"",jobType:"normal",stayPropId:""});
+  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",startTime:"",endTime:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:"",jobType:"normal",stayPropId:""});
   const [form,setForm]=useState(blank());
   const calMonth=listMonth||toMonth();
   const setCalMonth=m=>setListMonth(m);
@@ -565,6 +565,8 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
             <FR label="作業日"><input type="date" value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
             <FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR>
+            <FR label="開始時刻"><input type="time" value={form.startTime||""} onChange={e=>setForm({...form,startTime:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
+            <FR label="終了時刻"><input type="time" value={form.endTime||""} onChange={e=>setForm({...form,endTime:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}/></FR>
             <FR label="状況"><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{STATUS_LIST.map(s=><option key={s}>{s}</option>)}</select></FR>
             <FR label="支払"><select value={form.payment} onChange={e=>setForm({...form,payment:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}><option>振込</option><option>現金</option></select></FR>
           </div>
