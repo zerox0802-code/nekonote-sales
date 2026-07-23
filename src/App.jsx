@@ -205,6 +205,7 @@ export default function App(){
     ["future","📅来月〜"],
     ["cleaning","🏠清掃"],
     ["stay","🏨宿泊"],
+    ["proplist","🏘一覧"],
     ["cases","📋売上"],
     ["estimate","💴見積"],
     ["customers","👥顧客"],
@@ -236,6 +237,7 @@ export default function App(){
       {loading?<div style={S.empty}>読み込み中…</div>:<>
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
+        {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
@@ -249,121 +251,90 @@ export default function App(){
 }
 
 // ══════════════════════════════════════════
-// 🏨 宿泊清掃タブ
+// 🏘 物件一覧タブ（日常清掃・民泊・マンスリーを横断表示）
 // ══════════════════════════════════════════
-function StayTab({month,stayProps,staffList,stayClean,saveStayClean,stayExtra,saveStayExtra}){
-  const names=stNames(staffList);
-  const [memoPopup,setMemoPopup]=useState(null);
+const CATEGORY_STYLE = {
+  "日常清掃": {bg:"#ecfdf5",color:"#047857",border:"#6ee7b7",icon:"🏠"},
+  "民泊":     {bg:"#eff6ff",color:"#1e6091",border:"#93c5fd",icon:"🏨"},
+  "マンスリー":{bg:"#f5f3ff",color:"#7c3aed",border:"#c4b5fd",icon:"🏢"},
+};
+const PROP_FILTERS = ["すべて","日常清掃","民泊","マンスリー"];
 
-  const getC=(pid,st)=>Number(stayClean[cdKey(month,pid,st)]||0);
-  const setC=useCallback(async(pid,st,num)=>{
-    await saveStayClean({...stayClean,[cdKey(month,pid,st)]:num});
-  },[month,stayClean,saveStayClean]);
+function PropertyListTab({props,stayProps}){
+  const [filter,setFilter]=useState("すべて");
+  const [query,setQuery]=useState("");
 
-  const getExtra=(pid)=>Number(stayExtra?.[exKey(month,pid)]||0);
-  const setExtra=useCallback(async(pid,num)=>{
-    await saveStayExtra({...(stayExtra||{}),[exKey(month,pid)]:num});
-  },[month,stayExtra,saveStayExtra]);
+  const allItems = useMemo(()=>{
+    const daily=(props||[]).map(p=>({
+      id:"d"+p.id, name:p.name, category:"日常清掃",
+      price:p.fee||0, unit:"月額", address:p.address||"", note:p.note||"",
+    }));
+    const stay=(stayProps||[]).map(p=>({
+      id:"s"+p.id, name:p.name, category:p.type==="monthly"?"マンスリー":"民泊",
+      price:p.unitPrice||0, unit:"1回", address:p.address||"", note:p.note||"",
+    }));
+    return [...daily,...stay];
+  },[props,stayProps]);
 
-  const getExtraStaff=(p)=>names.find(s=>getC(p.id,s)>0)||null;
+  const counts=useMemo(()=>{
+    const c={すべて:allItems.length,日常清掃:0,民泊:0,マンスリー:0};
+    allItems.forEach(p=>{c[p.category]=(c[p.category]||0)+1;});
+    return c;
+  },[allItems]);
 
-  const getPropSales=useCallback(p=>{
-    const counts={};names.forEach(st=>counts[st]=getC(p.id,st));
-    const base=calcStayStaffSales(p.unitPrice,counts,names);
-    const extra=getExtra(p.id);
-    const extraSt=getExtraStaff(p);
-    return base.map((s,i)=>extraSt&&names[i]===extraSt?s+extra:s);
-  },[month,stayProps,staffList,stayClean,stayExtra]);
-
-  const stTotal=st=>(stayProps||[]).reduce((s,p)=>{
-    const sales=getPropSales(p);
-    return s+(sales[names.indexOf(st)]||0);
-  },0);
-  const grand=names.reduce((s,st)=>s+stTotal(st),0);
-  const hasMemo=p=>p.address||p.note;
-
-  if(!stayProps||stayProps.length===0){
-    return <div style={{animation:"fadeUp .3s ease"}}>
-      <div style={S.empty}>
-        <div style={{fontSize:32,marginBottom:12}}>🏨</div>
-        <div style={{fontWeight:700,color:"#aaa",marginBottom:8}}>宿泊清掃物件が未登録です</div>
-        <div style={{fontSize:12,color:"#ccc"}}>⚙設定タブ →「🏨宿泊清掃物件マスタ」から物件を追加してください</div>
-      </div>
-    </div>;
-  }
+  const filtered=useMemo(()=>allItems.filter(p=>{
+    const mF=filter==="すべて"||p.category===filter;
+    const q=query.trim();
+    const mQ=!q||p.name.includes(q)||p.address.includes(q)||p.note.includes(q);
+    return mF&&mQ;
+  }),[allItems,filter,query]);
 
   return <div style={{animation:"fadeUp .3s ease"}}>
-    <div style={S.staffBar}>
-      {names.map(st=><div key={st} style={S.staffCell}><div style={S.staffLabel}>{st}</div><div style={S.staffAmt}>{yen(stTotal(st))}</div></div>)}
-      <div style={{...S.staffCell,background:"#1e6091",border:"none"}}><div style={{...S.staffLabel,color:"rgba(255,255,255,0.7)"}}>合計</div><div style={{...S.staffAmt,color:"#fff"}}>{yen(grand)}</div></div>
-    </div>
-    <div style={S.tableWrap}><table>
-      <thead><tr>
-        <th style={{textAlign:"left",minWidth:110}}>物件名</th>
-        <th>1回単価</th>
-        {names.map(st=><th key={st} style={{color:"#1e6091"}}>{st}<br/>回数</th>)}
-        {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
-        <th style={{color:"#b45309"}}>追加料金</th>
-        <th>物件計</th>
-      </tr></thead>
-      <tbody>{(stayProps||[]).map(p=>{
-        const sales=getPropSales(p);
-        const extra=getExtra(p.id);
-        const extraSt=getExtraStaff(p);
-        const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
-        const propTotal=sales.reduce((a,b)=>a+b,0);
-        return <tr key={p.id}>
-          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>
-            <div style={{display:"flex",alignItems:"center",gap:4}}>
-              <span>{p.name}</span>
-              {hasMemo(p)&&<button onClick={()=>setMemoPopup(p)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"0 2px",lineHeight:1,color:"#1e6091",flexShrink:0}}>📍</button>}
-            </div>
-            {p.type&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{p.type==="minpaku"?"民泊":"マンスリー"}</div>}
-          </td>
-          <td style={{color:"#1e6091",fontWeight:600}}>{yen(p.unitPrice||0)}</td>
-          {names.map(st=><td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>)}
-          {sales.map((s,i)=><td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>)}
-          <td>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-              <NumInput value={extra} onCommit={num=>setExtra(p.id,num)} min={0} style={{width:70,textAlign:"center",padding:"4px 2px",borderColor:extra>0?"#f59e0b":"#e0d0d0"}}/>
-              {extra>0&&extraSt&&<div style={{fontSize:9,color:"#b45309",whiteSpace:"nowrap"}}>→{extraSt}</div>}
-            </div>
-          </td>
-          <td style={{fontWeight:700,color:totalCnt>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
-        </tr>;
-      })}</tbody>
-      <tfoot><tr style={{background:"#f0f7ff"}}>
-        <td style={{textAlign:"left",fontWeight:700}} colSpan={2}>合計</td>
-        {names.map(st=><td key={st}/>)}
-        {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#1e6091"}}>{yen(stTotal(st))}</td>)}
-        <td style={{fontWeight:700,color:"#b45309"}}>{yen((stayProps||[]).reduce((s,p)=>s+getExtra(p.id),0))}</td>
-        <td style={{fontWeight:700}}>{yen(grand)}</td>
-      </tr></tfoot>
-    </table></div>
+    <input type="text" value={query} onChange={e=>setQuery(e.target.value)}
+      placeholder="🔍 物件名・住所・備考で検索" style={{width:"100%",marginBottom:10,boxSizing:"border-box"}}/>
 
-    {memoPopup&&<div style={S.modalBg} onClick={()=>setMemoPopup(null)}>
-      <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontWeight:700,fontSize:16,color:"#1e6091",marginBottom:16}}>📍 {memoPopup.name}</div>
-        {memoPopup.type&&<div style={{marginBottom:10}}>
-          <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>
-            {memoPopup.type==="minpaku"?"🏨 民泊":"🏢 マンスリー"}
-          </span>
-        </div>}
-        {memoPopup.address&&<div style={{marginBottom:12}}>
-          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>住所</div>
-          <div style={{fontSize:14,fontWeight:500,color:"#333",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.6}}>{memoPopup.address}</div>
-          <a href={`https://maps.google.com/?q=${encodeURIComponent(memoPopup.address)}`} target="_blank" rel="noreferrer"
-            style={{display:"inline-block",marginTop:6,fontSize:12,color:"#1e40af",textDecoration:"none",background:"#dbeafe",borderRadius:6,padding:"4px 10px"}}>
-            🗺 Googleマップで開く
-          </a>
-        </div>}
-        {memoPopup.note&&<div style={{marginBottom:12}}>
-          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>メモ</div>
-          <div style={{fontSize:13,color:"#555",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{memoPopup.note}</div>
-        </div>}
-        <button style={{...S.cancelBtn,width:"100%",marginTop:8}} onClick={()=>setMemoPopup(null)}>閉じる</button>
-      </div>
-    </div>}
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {PROP_FILTERS.map(f=>{
+        const active=filter===f;
+        const st=CATEGORY_STYLE[f];
+        return <button key={f} onClick={()=>setFilter(f)} style={{
+          display:"inline-flex",alignItems:"center",gap:5,
+          padding:"6px 14px",borderRadius:20,border:"1.5px solid",fontSize:12,cursor:"pointer",fontWeight:700,
+          background:active?(f==="すべて"?"#c0392b":st.bg):"#fff",
+          color:active?(f==="すべて"?"#fff":st.color):"#999",
+          borderColor:active?(f==="すべて"?"#c0392b":st.border):"#e0d0d0",
+        }}>
+          {f!=="すべて"&&<span>{st.icon}</span>}
+          <span>{f}</span>
+          <span style={{opacity:0.7}}>{counts[f]||0}</span>
+        </button>;
+      })}
+    </div>
+
+    <div style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px rgba(180,0,0,0.07)"}}>
+      {filtered.length===0?<div style={S.empty}>該当する物件がありません</div>:
+      filtered.map(p=>{
+        const st=CATEGORY_STYLE[p.category];
+        return <div key={p.id} style={{padding:"14px 16px",borderBottom:"1px solid #f5eeee",display:"flex",alignItems:"flex-start",gap:12}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontWeight:700,fontSize:14,color:"#333"}}>{p.name}</span>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4,background:st.bg,color:st.color,border:`1px solid ${st.border}`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                {st.icon} {p.category}
+              </span>
+            </div>
+            {p.address&&<div style={{fontSize:12,color:"#777",lineHeight:1.6}}>📍 {p.address}</div>}
+            {p.note&&<div style={{fontSize:12,color:"#aaa",lineHeight:1.6,marginTop:2}}>📝 {p.note}</div>}
+          </div>
+          <div style={{textAlign:"right",flexShrink:0,paddingTop:2}}>
+            <span style={{fontSize:11,color:"#bbb",fontWeight:600,whiteSpace:"nowrap"}}>
+              ¥{Number(p.price||0).toLocaleString()}
+              <span style={{fontSize:9}}>/{p.unit}</span>
+            </span>
+          </div>
+        </div>;
+      })}
+    </div>
   </div>;
 }
 
