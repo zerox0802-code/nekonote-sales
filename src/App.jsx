@@ -251,6 +251,125 @@ export default function App(){
 }
 
 // ══════════════════════════════════════════
+// 🏨 宿泊清掃タブ
+// ══════════════════════════════════════════
+function StayTab({month,stayProps,staffList,stayClean,saveStayClean,stayExtra,saveStayExtra}){
+  const names=stNames(staffList);
+  const [memoPopup,setMemoPopup]=useState(null);
+
+  const getC=(pid,st)=>Number(stayClean[cdKey(month,pid,st)]||0);
+  const setC=useCallback(async(pid,st,num)=>{
+    await saveStayClean({...stayClean,[cdKey(month,pid,st)]:num});
+  },[month,stayClean,saveStayClean]);
+
+  const getExtra=(pid)=>Number(stayExtra?.[exKey(month,pid)]||0);
+  const setExtra=useCallback(async(pid,num)=>{
+    await saveStayExtra({...(stayExtra||{}),[exKey(month,pid)]:num});
+  },[month,stayExtra,saveStayExtra]);
+
+  const getExtraStaff=(p)=>names.find(s=>getC(p.id,s)>0)||null;
+
+  const getPropSales=useCallback(p=>{
+    const counts={};names.forEach(st=>counts[st]=getC(p.id,st));
+    const base=calcStayStaffSales(p.unitPrice,counts,names);
+    const extra=getExtra(p.id);
+    const extraSt=getExtraStaff(p);
+    return base.map((s,i)=>extraSt&&names[i]===extraSt?s+extra:s);
+  },[month,stayProps,staffList,stayClean,stayExtra]);
+
+  const stTotal=st=>(stayProps||[]).reduce((s,p)=>{
+    const sales=getPropSales(p);
+    return s+(sales[names.indexOf(st)]||0);
+  },0);
+  const grand=names.reduce((s,st)=>s+stTotal(st),0);
+  const hasMemo=p=>p.address||p.note;
+
+  if(!stayProps||stayProps.length===0){
+    return <div style={{animation:"fadeUp .3s ease"}}>
+      <div style={S.empty}>
+        <div style={{fontSize:32,marginBottom:12}}>🏨</div>
+        <div style={{fontWeight:700,color:"#aaa",marginBottom:8}}>宿泊清掃物件が未登録です</div>
+        <div style={{fontSize:12,color:"#ccc"}}>⚙設定タブ →「🏨宿泊清掃物件マスタ」から物件を追加してください</div>
+      </div>
+    </div>;
+  }
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div style={S.staffBar}>
+      {names.map(st=><div key={st} style={S.staffCell}><div style={S.staffLabel}>{st}</div><div style={S.staffAmt}>{yen(stTotal(st))}</div></div>)}
+      <div style={{...S.staffCell,background:"#1e6091",border:"none"}}><div style={{...S.staffLabel,color:"rgba(255,255,255,0.7)"}}>合計</div><div style={{...S.staffAmt,color:"#fff"}}>{yen(grand)}</div></div>
+    </div>
+    <div style={S.tableWrap}><table>
+      <thead><tr>
+        <th style={{textAlign:"left",minWidth:110}}>物件名</th>
+        <th>1回単価</th>
+        {names.map(st=><th key={st} style={{color:"#1e6091"}}>{st}<br/>回数</th>)}
+        {names.map(st=><th key={st+"$"} style={{color:"#2d6a4f"}}>{st}<br/>売上</th>)}
+        <th style={{color:"#b45309"}}>追加料金</th>
+        <th>物件計</th>
+      </tr></thead>
+      <tbody>{(stayProps||[]).map(p=>{
+        const sales=getPropSales(p);
+        const extra=getExtra(p.id);
+        const extraSt=getExtraStaff(p);
+        const totalCnt=names.reduce((s,st)=>s+getC(p.id,st),0);
+        const propTotal=sales.reduce((a,b)=>a+b,0);
+        return <tr key={p.id}>
+          <td style={{textAlign:"left",fontSize:11,fontWeight:500}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <span>{p.name}</span>
+              {hasMemo(p)&&<button onClick={()=>setMemoPopup(p)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,padding:"0 2px",lineHeight:1,color:"#1e6091",flexShrink:0}}>📍</button>}
+            </div>
+            {p.type&&<div style={{fontSize:9,color:"#aaa",marginTop:1}}>{p.type==="minpaku"?"民泊":"マンスリー"}</div>}
+          </td>
+          <td style={{color:"#1e6091",fontWeight:600}}>{yen(p.unitPrice||0)}</td>
+          {names.map(st=><td key={st}><NumInput value={getC(p.id,st)} onCommit={num=>setC(p.id,st,num)} min={0} style={{width:44,textAlign:"center",padding:"4px 2px"}}/></td>)}
+          {sales.map((s,i)=><td key={names[i]+"$"} style={{fontWeight:600,color:"#2d6a4f"}}>{yen(s)}</td>)}
+          <td>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <NumInput value={extra} onCommit={num=>setExtra(p.id,num)} min={0} style={{width:70,textAlign:"center",padding:"4px 2px",borderColor:extra>0?"#f59e0b":"#e0d0d0"}}/>
+              {extra>0&&extraSt&&<div style={{fontSize:9,color:"#b45309",whiteSpace:"nowrap"}}>→{extraSt}</div>}
+            </div>
+          </td>
+          <td style={{fontWeight:700,color:totalCnt>0?"#2d6a4f":"#333"}}>{yen(propTotal)}</td>
+        </tr>;
+      })}</tbody>
+      <tfoot><tr style={{background:"#f0f7ff"}}>
+        <td style={{textAlign:"left",fontWeight:700}} colSpan={2}>合計</td>
+        {names.map(st=><td key={st}/>)}
+        {names.map(st=><td key={st+"$"} style={{fontWeight:700,color:"#1e6091"}}>{yen(stTotal(st))}</td>)}
+        <td style={{fontWeight:700,color:"#b45309"}}>{yen((stayProps||[]).reduce((s,p)=>s+getExtra(p.id),0))}</td>
+        <td style={{fontWeight:700}}>{yen(grand)}</td>
+      </tr></tfoot>
+    </table></div>
+
+    {memoPopup&&<div style={S.modalBg} onClick={()=>setMemoPopup(null)}>
+      <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,fontSize:16,color:"#1e6091",marginBottom:16}}>📍 {memoPopup.name}</div>
+        {memoPopup.type&&<div style={{marginBottom:10}}>
+          <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>
+            {memoPopup.type==="minpaku"?"🏨 民泊":"🏢 マンスリー"}
+          </span>
+        </div>}
+        {memoPopup.address&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>住所</div>
+          <div style={{fontSize:14,fontWeight:500,color:"#333",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.6}}>{memoPopup.address}</div>
+          <a href={`https://maps.google.com/?q=${encodeURIComponent(memoPopup.address)}`} target="_blank" rel="noreferrer"
+            style={{display:"inline-block",marginTop:6,fontSize:12,color:"#1e40af",textDecoration:"none",background:"#dbeafe",borderRadius:6,padding:"4px 10px"}}>
+            🗺 Googleマップで開く
+          </a>
+        </div>}
+        {memoPopup.note&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:"#aaa",marginBottom:4}}>メモ</div>
+          <div style={{fontSize:13,color:"#555",background:"#faf8f5",borderRadius:8,padding:"10px 12px",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{memoPopup.note}</div>
+        </div>}
+        <button style={{...S.cancelBtn,width:"100%",marginTop:8}} onClick={()=>setMemoPopup(null)}>閉じる</button>
+      </div>
+    </div>}
+  </div>;
+}
+
+// ══════════════════════════════════════════
 // 🏘 物件一覧タブ（日常清掃・民泊・マンスリーを横断表示）
 // ══════════════════════════════════════════
 const CATEGORY_STYLE = {
