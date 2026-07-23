@@ -386,11 +386,11 @@ function PropertyListTab({props,stayProps}){
   const allItems = useMemo(()=>{
     const daily=(props||[]).map(p=>({
       id:"d"+p.id, name:p.name, category:"日常清掃",
-      price:p.fee||0, unit:"月額", address:p.address||"", note:p.note||"",
+      price:p.fee||0, unit:"月額", address:p.address||"", note:p.callNo||"", noteLabel:"呼出番号",
     }));
     const stay=(stayProps||[]).map(p=>({
       id:"s"+p.id, name:p.name, category:p.type==="monthly"?"マンスリー":"民泊",
-      price:p.unitPrice||0, unit:"1回", address:p.address||"", note:p.note||"",
+      price:p.unitPrice||0, unit:"1回", address:p.address||"", note:p.note||"", noteLabel:"備考",
     }));
     return [...daily,...stay];
   },[props,stayProps]);
@@ -443,7 +443,7 @@ function PropertyListTab({props,stayProps}){
               </span>
             </div>
             {p.address&&<div style={{fontSize:12,color:"#777",lineHeight:1.6}}>📍 {p.address}</div>}
-            {p.note&&<div style={{fontSize:12,color:"#aaa",lineHeight:1.6,marginTop:2}}>📝 {p.note}</div>}
+            {p.note&&<div style={{fontSize:12,color:"#aaa",lineHeight:1.6,marginTop:2}}>{p.noteLabel==="呼出番号"?"📞":"📝"} {p.noteLabel}：{p.note}</div>}
           </div>
           <div style={{textAlign:"right",flexShrink:0,paddingTop:2}}>
             <span style={{fontSize:11,color:"#bbb",fontWeight:600,whiteSpace:"nowrap"}}>
