@@ -7,6 +7,7 @@ const SK = {
   staff:"staff", monthcnt:"monthcnt", password:"password",
   jobs:"jobs", customers:"customers",
   stayProps:"stayProps", stayClean:"stayClean", stayMonthCnt:"stayMc", stayExtra:"stayExtra",
+  invoiceCfg:"invoiceCfg",
 };
 const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
@@ -33,6 +34,10 @@ const DEFAULT_PROPS = [
 ];
 const DEFAULT_STAY_PROPS = [];
 const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
+const DEFAULT_INVOICE_CFG = {
+  companyName:"", companyAddress:"", companyPhone:"", registNo:"",
+  bankName:"", bankBranch:"", accountType:"普通", accountNo:"", accountHolder:"",
+};
 const STATUS_LIST = ["見込み","見積済","確定","完了","キャンセル"];
 const STATUS_COLOR = {
   "見積済":{bg:"#fef9c3",color:"#854d0e",border:"#fde047"},
@@ -114,6 +119,7 @@ export default function App(){
   const [jobs,setJobs]=useState([]);
   const [customers,setCustomers]=useState([]);
   const [cfg,setCfg]=useState(DEFAULT_CFG);
+  const [invoiceCfg,setInvoiceCfg]=useState(DEFAULT_INVOICE_CFG);
   const [password,setPassword]=useState(DEFAULT_PASSWORD);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
@@ -124,16 +130,18 @@ export default function App(){
   useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf,mc,j,cu,sp,sc,smc,se]=await Promise.all([
+      const [p,cl,ca,c,sf,mc,j,cu,sp,sc,smc,se,ic]=await Promise.all([
         stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),stGet(SK.settings),
         stGet(SK.staff),stGet(SK.monthcnt),stGet(SK.jobs),stGet(SK.customers),
         stGet(SK.stayProps),stGet(SK.stayClean),stGet(SK.stayMonthCnt),stGet(SK.stayExtra),
+        stGet(SK.invoiceCfg),
       ]);
       if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca); if(c)setCfg(c);
       if(sf)setStaffList(sf.map(toStaffObj)); if(mc)setMonthCntData(mc);
       if(j){setJobs(j);setNewCount((j||[]).filter(x=>x.isNew&&x.status!=="完了"&&x.status!=="キャンセル").length);}
       if(cu)setCustomers(cu);
       if(sp)setStayProps(sp); if(sc)setStayClean(sc); if(smc)setStayMonthCnt(smc); if(se)setStayExtra(se);
+      if(ic)setInvoiceCfg(ic);
       setLoading(false);
     })();
   },[authed]);
@@ -149,6 +157,7 @@ export default function App(){
   const saveJobs=async v=>{setJobs(v);await stSet(SK.jobs,v);};
   const saveCustomers=async v=>{setCustomers(v);await stSet(SK.customers,v);};
   const saveCfg=async v=>{setCfg(v);await stSet(SK.settings,v);};
+  const saveInvoiceCfg=async v=>{setInvoiceCfg(v);await stSet(SK.invoiceCfg,v);};
   const saveStaff=async v=>{setStaffList(v);await stSet(SK.staff,v);};
   const savePassword=async v=>{setPassword(v);await stSet(SK.password,v);};
 
@@ -210,6 +219,7 @@ export default function App(){
     ["estimate","💴見積"],
     ["customers","👥顧客"],
     ["closing","📊締め"],
+    ["invoice","🧾請求書"],
     ["cfg","⚙設定"],
   ];
 
@@ -244,7 +254,8 @@ export default function App(){
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} showToast={showToast}/>}
+        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} invoiceCfg={invoiceCfg} showToast={showToast}/>}
+        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast}/>}
       </>}
     </div>
   </div>;
@@ -561,7 +572,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
         <thead><tr>
           <th style={{textAlign:"left",minWidth:80}}>依頼者</th>
           <th style={{textAlign:"left",minWidth:90}}>内容</th>
-          <th>作業日</th><th>担当</th><th>状況</th>
+          <th>作業日</th><th>担当</th><th>状況</th><th>支払</th>
           <th style={{textAlign:"right"}}>金額</th><th></th>
         </tr></thead>
         <tbody>{filtered.map(job=>{
@@ -575,6 +586,12 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
             <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"−"}</td>
             <td style={{textAlign:"center"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:11,fontWeight:700}}>{job.staff?job.staff[0]:"?"}</span></td>
             <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{job.status}</span></td>
+            <td style={{textAlign:"center"}}>
+              {job.jobType!=="stay"&&job.payment&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",fontSize:10,fontWeight:700,
+                background:job.payment==="現金"?"#fef9c3":"#dbeafe",
+                color:job.payment==="現金"?"#7a4f00":"#1e3a8a",
+                border:job.payment==="現金"?"1.5px solid #f0b429":"1.5px solid #3b82f6"}}>{job.payment==="現金"?"現":"振"}</span>}
+            </td>
             <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f"}}>{job.amount>0?yen(job.amount):"−"}</td>
             <td onClick={e=>e.stopPropagation()}>
               {job.status==="確定"&&<button onClick={()=>changeStatus(job,"完了")} style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:6,fontSize:10,cursor:"pointer",color:"#166534",padding:"2px 6px",whiteSpace:"nowrap"}}>✅完了</button>}
@@ -1105,11 +1122,189 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stay
   </div>;
 }
 
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,showToast}){
+// ══════════════════════════════════════════
+// 🧾 請求書タブ
+// ══════════════════════════════════════════
+function InvoiceTab({jobs,customers,invoiceCfg,showToast}){
+  const ic=invoiceCfg||DEFAULT_INVOICE_CFG;
+  const [client,setClient]=useState("");
+  const [clientAddress,setClientAddress]=useState("");
+  const [issueDate,setIssueDate]=useState(toDay());
+  const [dueDate,setDueDate]=useState("");
+  const [note,setNote]=useState("");
+  const [lines,setLines]=useState([{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
+  const [showPicker,setShowPicker]=useState(false);
+  const [taxRate,setTaxRate]=useState(10);
+
+  const invoiceNo="INV-"+(issueDate||toDay()).replace(/-/g,"");
+
+  const addLine=()=>setLines([...lines,{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
+  const updLine=(id,k,v)=>setLines(lines.map(l=>l.id===id?{...l,[k]:v}:l));
+  const delLine=id=>{if(lines.length<=1)return;setLines(lines.filter(l=>l.id!==id));};
+
+  const selectCustomer=name=>{
+    const c=(customers||[]).find(c=>c.name===name);
+    setClient(name);
+    if(c?.address)setClientAddress(c.address);
+  };
+
+  const pickableJobs=useMemo(()=>{
+    return (jobs||[]).filter(j=>j.jobType!=="stay"&&j.amount>0)
+      .sort((a,b)=>(b.workDate||"").localeCompare(a.workDate||""));
+  },[jobs]);
+
+  const addFromJob=(job)=>{
+    setLines(prev=>{
+      const blank=prev.length===1&&!prev[0].desc&&!prev[0].unitPrice;
+      const newLine={id:Date.now()+Math.random(),desc:job.content||"",qty:1,unitPrice:Number(job.amount)||0};
+      return blank?[newLine]:[...prev,newLine];
+    });
+    if(!client)selectCustomer(job.client);
+    setShowPicker(false);
+    showToast("✅ 案件を明細に追加しました");
+  };
+
+  const subtotal=lines.reduce((s,l)=>s+(Number(l.qty)||0)*(Number(l.unitPrice)||0),0);
+  const taxAmt=Math.round(subtotal*taxRate/100);
+  const total=subtotal+taxAmt;
+
+  const doPrint=()=>{
+    if(!client){showToast("⚠ 宛先を入力してください");return;}
+    window.print();
+  };
+
+  return <div style={{animation:"fadeUp .3s ease"}}>
+    <div className="no-print">
+      <div style={{...S.card,marginBottom:12}}>
+        <div style={S.sTitle}>🧾 請求書を作成</div>
+
+        <FR label="宛先（お客様名）">
+          <input type="text" value={client} onChange={e=>{setClient(e.target.value);selectCustomer(e.target.value);}} placeholder="鳥井さん" list="invclist"/>
+          <datalist id="invclist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+        </FR>
+        <FR label="宛先住所（任意）"><input type="text" value={clientAddress} onChange={e=>setClientAddress(e.target.value)} placeholder="福岡市…"/></FR>
+
+        <div style={{display:"flex",gap:16}}>
+          <div style={{flex:1,minWidth:0}}><FR label="発行日"><input type="date" value={issueDate} onChange={e=>setIssueDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+          <div style={{flex:1,minWidth:0}}><FR label="支払期限（任意）"><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        </div>
+
+        <button onClick={()=>setShowPicker(true)} style={{...S.cancelBtn,marginBottom:12}}>📋 案件から明細を追加</button>
+
+        <div style={S.sTitle}>明細</div>
+        {lines.map(l=><div key={l.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+          <input type="text" value={l.desc} onChange={e=>updLine(l.id,"desc",e.target.value)} placeholder="品目（例：ハウスクリーニング）" style={{flex:1}}/>
+          <NumInput value={l.qty} onCommit={v=>updLine(l.id,"qty",v)} min={1} style={{width:44,textAlign:"center"}}/>
+          <span style={{fontSize:11,color:"#aaa"}}>×</span>
+          <NumInput value={l.unitPrice} onCommit={v=>updLine(l.id,"unitPrice",v)} min={0} style={{width:90,textAlign:"center"}}/>
+          <button onClick={()=>delLine(l.id)} style={{...S.iconBtn,color:"#ccc"}}>✕</button>
+        </div>)}
+        <button onClick={addLine} style={{...S.cancelBtn,marginBottom:12}}>＋ 品目を追加</button>
+
+        <FR label="消費税率（%）"><NumInput value={taxRate} onCommit={setTaxRate} min={0} style={{width:80}}/></FR>
+        <FR label="備考"><textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}} placeholder="納品場所・支払方法など"/></FR>
+
+        <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666"}}><span>小計</span><span>{yen(subtotal)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#666"}}><span>消費税（{taxRate}%）</span><span>{yen(taxAmt)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:16,color:"#166534",marginTop:4,borderTop:"1px solid #d1fae5",paddingTop:4}}><span>合計</span><span>{yen(total)}</span></div>
+        </div>
+
+        <button style={S.saveBtn} onClick={doPrint}>🖨 印刷してPDFで保存</button>
+        <p style={{fontSize:10,color:"#bbb",marginTop:8,textAlign:"center"}}>印刷ダイアログで「PDFに保存」を選ぶとファイルとして保存できます</p>
+      </div>
+
+      {showPicker&&<div style={S.modalBg} onClick={()=>setShowPicker(false)}>
+        <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>📋 案件を選択</div>
+          {pickableJobs.length===0?<div style={S.empty}>金額のある案件がありません</div>:
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"50vh",overflowY:"auto"}}>
+            {pickableJobs.map(job=><div key={job.id} onClick={()=>addFromJob(job)}
+              style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid #e0d0d0",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:13}}>{job.client}</div>
+                <div style={{fontSize:11,color:"#888"}}>{job.content}{job.workDate?`・${job.workDate}`:""}</div>
+              </div>
+              <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(job.amount)}</div>
+            </div>)}
+          </div>}
+          <button style={{...S.cancelBtn,width:"100%",marginTop:14}} onClick={()=>setShowPicker(false)}>閉じる</button>
+        </div>
+      </div>}
+    </div>
+
+    <div className="invoice-print-area" style={{background:"#fff",borderRadius:14,padding:"32px 28px",boxShadow:"0 2px 8px rgba(180,0,0,0.07)",color:"#222"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+        <h1 style={{fontSize:26,fontWeight:700,letterSpacing:4}}>請求書</h1>
+        <div style={{textAlign:"right",fontSize:12,color:"#666"}}>
+          <div>請求書番号：{invoiceNo}</div>
+          <div>発行日：{issueDate}</div>
+          {dueDate&&<div>お支払期限：{dueDate}</div>}
+        </div>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,borderBottom:"2px solid #333",paddingBottom:4,marginBottom:4,minWidth:200}}>{client||"　"} 様</div>
+          {clientAddress&&<div style={{fontSize:12,color:"#666"}}>{clientAddress}</div>}
+        </div>
+        <div style={{textAlign:"right",fontSize:12,color:"#333",lineHeight:1.7}}>
+          <div style={{fontWeight:700,fontSize:14}}>{ic.companyName||"（屋号未設定）"}</div>
+          {ic.companyAddress&&<div>{ic.companyAddress}</div>}
+          {ic.companyPhone&&<div>TEL：{ic.companyPhone}</div>}
+          {ic.registNo&&<div>登録番号：{ic.registNo}</div>}
+        </div>
+      </div>
+
+      <div style={{background:"#faf8f5",borderRadius:8,padding:"14px 18px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#555"}}>ご請求金額</span>
+        <span style={{fontSize:24,fontWeight:700,color:"#8b0000"}}>{yen(total)}</span>
+      </div>
+
+      <table style={{width:"100%",borderCollapse:"collapse",marginBottom:16}}>
+        <thead><tr style={{borderBottom:"2px solid #333"}}>
+          <th style={{textAlign:"left",padding:"6px 4px",fontSize:12}}>品目</th>
+          <th style={{textAlign:"center",padding:"6px 4px",fontSize:12,width:60}}>数量</th>
+          <th style={{textAlign:"right",padding:"6px 4px",fontSize:12,width:100}}>単価</th>
+          <th style={{textAlign:"right",padding:"6px 4px",fontSize:12,width:110}}>金額</th>
+        </tr></thead>
+        <tbody>{lines.filter(l=>l.desc||l.unitPrice).map(l=><tr key={l.id} style={{borderBottom:"1px solid #eee"}}>
+          <td style={{textAlign:"left",padding:"8px 4px",fontSize:13}}>{l.desc||"（品目未入力）"}</td>
+          <td style={{textAlign:"center",padding:"8px 4px",fontSize:13}}>{l.qty}</td>
+          <td style={{textAlign:"right",padding:"8px 4px",fontSize:13}}>{yen(l.unitPrice)}</td>
+          <td style={{textAlign:"right",padding:"8px 4px",fontSize:13,fontWeight:700}}>{yen((Number(l.qty)||0)*(Number(l.unitPrice)||0))}</td>
+        </tr>)}</tbody>
+      </table>
+
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:24}}>
+        <div style={{width:220}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>小計</span><span>{yen(subtotal)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0"}}><span>消費税（{taxRate}%）</span><span>{yen(taxAmt)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,padding:"6px 0",borderTop:"2px solid #333",marginTop:4}}><span>合計</span><span>{yen(total)}</span></div>
+        </div>
+      </div>
+
+      {(ic.bankName||ic.accountNo)&&<div style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:4}}>お振込先</div>
+        <div style={{fontSize:12,color:"#333",lineHeight:1.8}}>
+          {ic.bankName} {ic.bankBranch} {ic.accountType}　{ic.accountNo}　{ic.accountHolder}
+        </div>
+      </div>}
+
+      {note&&<div>
+        <div style={{fontSize:12,fontWeight:700,color:"#555",marginBottom:4}}>備考</div>
+        <div style={{fontSize:12,color:"#333",whiteSpace:"pre-wrap",lineHeight:1.7}}>{note}</div>
+      </div>}
+    </div>
+  </div>;
+}
+
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,invoiceCfg,saveInvoiceCfg,showToast}){
   const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
   const [lStayProps,setLStayProps]=useState(stayProps||[]);useEffect(()=>setLStayProps(stayProps||[]),[stayProps]);
+  const [lInvoiceCfg,setLInvoiceCfg]=useState(invoiceCfg||DEFAULT_INVOICE_CFG);useEffect(()=>setLInvoiceCfg(invoiceCfg||DEFAULT_INVOICE_CFG),[invoiceCfg]);
 
   const updPropStr=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:v}:p));
   const updPropNum=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
@@ -1128,6 +1323,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
     await saveStaff(lStaff.filter(s=>s.name&&s.name.trim()));
     await saveCfg(lCfg);
     await saveStayProps(lStayProps);
+    await saveInvoiceCfg(lInvoiceCfg);
     showToast("✅ 保存しました");
   };
 
@@ -1206,6 +1402,29 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
     </div>
 
     <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🧾 請求書情報（会社情報・振込先）</div>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>ここで登録した内容が請求書作成時に自動で反映されます</p>
+      <FR label="屋号・会社名"><input type="text" value={lInvoiceCfg.companyName||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,companyName:e.target.value})} placeholder="便利屋 ねこのて"/></FR>
+      <FR label="住所"><input type="text" value={lInvoiceCfg.companyAddress||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,companyAddress:e.target.value})} placeholder="福岡市…"/></FR>
+      <div style={{display:"flex",gap:16}}>
+        <div style={{flex:1,minWidth:0}}><FR label="電話番号"><input type="tel" value={lInvoiceCfg.companyPhone||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,companyPhone:e.target.value})} placeholder="090-xxxx-xxxx" style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        <div style={{flex:1,minWidth:0}}><FR label="登録番号（インボイス）"><input type="text" value={lInvoiceCfg.registNo||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,registNo:e.target.value})} placeholder="T1234567890123" style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+      </div>
+      <div style={{borderTop:"1px solid #f5eeee",margin:"10px 0",paddingTop:10}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#888",marginBottom:8}}>振込先</div>
+        <div style={{display:"flex",gap:16}}>
+          <div style={{flex:1,minWidth:0}}><FR label="銀行名"><input type="text" value={lInvoiceCfg.bankName||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,bankName:e.target.value})} placeholder="〇〇銀行" style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+          <div style={{flex:1,minWidth:0}}><FR label="支店名"><input type="text" value={lInvoiceCfg.bankBranch||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,bankBranch:e.target.value})} placeholder="〇〇支店" style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        </div>
+        <div style={{display:"flex",gap:16}}>
+          <div style={{flex:1,minWidth:0}}><FR label="口座種別"><select value={lInvoiceCfg.accountType||"普通"} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,accountType:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}><option>普通</option><option>当座</option></select></FR></div>
+          <div style={{flex:1,minWidth:0}}><FR label="口座番号"><input type="text" value={lInvoiceCfg.accountNo||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,accountNo:e.target.value})} placeholder="1234567" style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
+        </div>
+        <FR label="口座名義"><input type="text" value={lInvoiceCfg.accountHolder||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,accountHolder:e.target.value})} placeholder="ベンリヤ）ネコノテ"/></FR>
+      </div>
+    </div>
+
+    <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>⚙️ 固定設定</div>
       <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
       <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
@@ -1249,6 +1468,12 @@ tr:hover td{background:#fff8f8}
 @keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 @keyframes toastAnim{0%{opacity:0;transform:translateX(-50%) translateY(10px)}15%{opacity:1;transform:translateX(-50%) translateY(0)}85%{opacity:1}100%{opacity:0}}
+@media print{
+  body *{visibility:hidden}
+  .invoice-print-area,.invoice-print-area *{visibility:visible}
+  .invoice-print-area{position:absolute;left:0;top:0;width:100%;padding:0;margin:0}
+  .no-print{display:none !important}
+}
 `;
 
 const S={
