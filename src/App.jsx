@@ -259,7 +259,7 @@ export default function App(){
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
+        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
         {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast}/>}
       </>}
     </div>
@@ -1130,7 +1130,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stay
 // ══════════════════════════════════════════
 // 🧾 請求書タブ
 // ══════════════════════════════════════════
-function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast}){
+function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,showToast}){
   const ic=invoiceCfg||DEFAULT_INVOICE_CFG;
   const [currentId,setCurrentId]=useState(null);
   const [client,setClient]=useState("");
@@ -1142,6 +1142,7 @@ function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast})
   const [note,setNote]=useState("");
   const [lines,setLines]=useState([{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
   const [showPicker,setShowPicker]=useState(false);
+  const [pickerTab,setPickerTab]=useState("jobs");
   const [showList,setShowList]=useState(false);
   const [taxRate,setTaxRate]=useState(10);
   const [invoiceNo,setInvoiceNo]=useState("INV-"+toDay().replace(/-/g,""));
@@ -1149,6 +1150,16 @@ function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast})
   const addLine=()=>setLines([...lines,{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
   const updLine=(id,k,v)=>setLines(lines.map(l=>l.id===id?{...l,[k]:v}:l));
   const delLine=id=>{if(lines.length<=1)return;setLines(lines.filter(l=>l.id!==id));};
+  const moveLine=(id,dir)=>{
+    setLines(prev=>{
+      const i=prev.findIndex(l=>l.id===id);
+      const j=i+dir;
+      if(i<0||j<0||j>=prev.length)return prev;
+      const next=[...prev];
+      [next[i],next[j]]=[next[j],next[i]];
+      return next;
+    });
+  };
 
   const selectCustomer=name=>{
     const c=(customers||[]).find(c=>c.name===name);
@@ -1170,6 +1181,16 @@ function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast})
     if(!client)selectCustomer(job.client);
     setShowPicker(false);
     showToast("✅ 案件を明細に追加しました");
+  };
+
+  const addFromProp=(p)=>{
+    setLines(prev=>{
+      const blank=prev.length===1&&!prev[0].desc&&!prev[0].unitPrice;
+      const newLine={id:Date.now()+Math.random(),desc:`${p.name}　日常清掃`,qty:1,unitPrice:Number(p.fee)||0};
+      return blank?[newLine]:[...prev,newLine];
+    });
+    setShowPicker(false);
+    showToast("✅ 日常清掃の物件を明細に追加しました");
   };
 
   const total=lines.reduce((s,l)=>s+(Number(l.qty)||0)*(Number(l.unitPrice)||0),0); // 入力額は税込
@@ -1265,11 +1286,15 @@ function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast})
           <div style={{flex:1,minWidth:0}}><FR label="支払期限（任意）"><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
         </div>
 
-        <button onClick={()=>setShowPicker(true)} style={{...S.cancelBtn,marginBottom:12}}>📋 案件から明細を追加</button>
+        <button onClick={()=>setShowPicker(true)} style={{...S.cancelBtn,marginBottom:12}}>📋 案件・日常清掃から明細を追加</button>
 
         <div style={S.sTitle}>明細</div>
         <p style={{fontSize:11,color:"#aaa",marginTop:-4,marginBottom:8}}>※単価は税込金額を入力してください（消費税は自動で逆算されます）</p>
-        {lines.map(l=><div key={l.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+        {lines.map((l,i)=><div key={l.id} style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+          <div style={{display:"flex",flexDirection:"column",gap:1}}>
+            <button onClick={()=>moveLine(l.id,-1)} disabled={i===0} style={{...S.iconBtn,padding:"0 4px",fontSize:10,opacity:i===0?0.3:1}}>▲</button>
+            <button onClick={()=>moveLine(l.id,1)} disabled={i===lines.length-1} style={{...S.iconBtn,padding:"0 4px",fontSize:10,opacity:i===lines.length-1?0.3:1}}>▼</button>
+          </div>
           <input type="text" value={l.desc} onChange={e=>updLine(l.id,"desc",e.target.value)} placeholder="品目（例：ハウスクリーニング）" style={{flex:1}}/>
           <NumInput value={l.qty} onCommit={v=>updLine(l.id,"qty",v)} min={1} style={{width:44,textAlign:"center"}}/>
           <span style={{fontSize:11,color:"#aaa"}}>×</span>
@@ -1296,18 +1321,36 @@ function InvoiceTab({jobs,customers,invoiceCfg,invoices,saveInvoices,showToast})
 
       {showPicker&&<div style={S.modalBg} onClick={()=>setShowPicker(false)}>
         <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
-          <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>📋 案件を選択</div>
-          {pickableJobs.length===0?<div style={S.empty}>金額のある案件がありません</div>:
-          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"50vh",overflowY:"auto"}}>
-            {pickableJobs.map(job=><div key={job.id} onClick={()=>addFromJob(job)}
-              style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid #e0d0d0",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:13}}>{job.client}</div>
-                <div style={{fontSize:11,color:"#888"}}>{job.content}{job.workDate?`・${job.workDate}`:""}</div>
-              </div>
-              <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(job.amount)}</div>
-            </div>)}
-          </div>}
+          <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:10}}>📋 明細を選択</div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            <button onClick={()=>setPickerTab("jobs")} style={{...S.seg,...(pickerTab==="jobs"?{background:"#fff5f5",borderColor:"#c0392b",color:"#c0392b",fontWeight:700}:{})}}>案件</button>
+            <button onClick={()=>setPickerTab("daily")} style={{...S.seg,...(pickerTab==="daily"?{background:"#ecfdf5",borderColor:"#2fa84f",color:"#2fa84f",fontWeight:700}:{})}}>🏠日常清掃</button>
+          </div>
+          {pickerTab==="jobs"?
+            (pickableJobs.length===0?<div style={S.empty}>金額のある案件がありません</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"45vh",overflowY:"auto"}}>
+              {pickableJobs.map(job=><div key={job.id} onClick={()=>addFromJob(job)}
+                style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid #e0d0d0",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13}}>{job.client}</div>
+                  <div style={{fontSize:11,color:"#888"}}>{job.content}{job.workDate?`・${job.workDate}`:""}</div>
+                </div>
+                <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(job.amount)}</div>
+              </div>)}
+            </div>)
+          :
+            ((dailyProps||[]).length===0?<div style={S.empty}>日常清掃の物件が登録されていません</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"45vh",overflowY:"auto"}}>
+              {(dailyProps||[]).map(p=><div key={p.id} onClick={()=>addFromProp(p)}
+                style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid #e0d0d0",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13}}>{p.name}</div>
+                  <div style={{fontSize:11,color:"#888"}}>日常清掃・月額</div>
+                </div>
+                <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(p.fee)}</div>
+              </div>)}
+            </div>)
+          }
           <button style={{...S.cancelBtn,width:"100%",marginTop:14}} onClick={()=>setShowPicker(false)}>閉じる</button>
         </div>
       </div>}
