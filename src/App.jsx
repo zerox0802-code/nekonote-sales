@@ -259,7 +259,7 @@ export default function App(){
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
+        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} stayProps={stayProps} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
         {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast}/>}
       </>}
     </div>
@@ -1130,7 +1130,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stay
 // ══════════════════════════════════════════
 // 🧾 請求書タブ
 // ══════════════════════════════════════════
-function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,showToast}){
+function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,saveInvoices,showToast}){
   const ic=invoiceCfg||DEFAULT_INVOICE_CFG;
   const [currentId,setCurrentId]=useState(null);
   const [client,setClient]=useState("");
@@ -1140,14 +1140,14 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
   const [issueDate,setIssueDate]=useState(toDay());
   const [dueDate,setDueDate]=useState("");
   const [note,setNote]=useState("");
-  const [lines,setLines]=useState([{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
+  const [lines,setLines]=useState([{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);
   const [showPicker,setShowPicker]=useState(false);
   const [pickerTab,setPickerTab]=useState("jobs");
   const [showList,setShowList]=useState(false);
   const [taxRate,setTaxRate]=useState(10);
   const [invoiceNo,setInvoiceNo]=useState("INV-"+toDay().replace(/-/g,""));
 
-  const addLine=()=>setLines([...lines,{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
+  const addLine=()=>setLines([...lines,{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);
   const updLine=(id,k,v)=>setLines(lines.map(l=>l.id===id?{...l,[k]:v}:l));
   const delLine=id=>{if(lines.length<=1)return;setLines(lines.filter(l=>l.id!==id));};
   const moveLine=(id,dir)=>{
@@ -1175,7 +1175,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
   const addFromJob=(job)=>{
     setLines(prev=>{
       const blank=prev.length===1&&!prev[0].desc&&!prev[0].unitPrice;
-      const newLine={id:Date.now()+Math.random(),desc:job.content||"",qty:1,unitPrice:Number(job.amount)||0};
+      const newLine={id:Date.now()+Math.random(),desc:job.content||"",qty:1,unit:"式",unitPrice:Number(job.amount)||0};
       return blank?[newLine]:[...prev,newLine];
     });
     if(!client)selectCustomer(job.client);
@@ -1186,11 +1186,22 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
   const addFromProp=(p)=>{
     setLines(prev=>{
       const blank=prev.length===1&&!prev[0].desc&&!prev[0].unitPrice;
-      const newLine={id:Date.now()+Math.random(),desc:`${p.name}　日常清掃`,qty:1,unitPrice:Number(p.fee)||0};
+      const newLine={id:Date.now()+Math.random(),desc:`${p.name}　日常清掃`,qty:1,unit:"式",unitPrice:Number(p.fee)||0};
       return blank?[newLine]:[...prev,newLine];
     });
     setShowPicker(false);
     showToast("✅ 日常清掃の物件を明細に追加しました");
+  };
+
+  const addFromStayProp=(p)=>{
+    setLines(prev=>{
+      const blank=prev.length===1&&!prev[0].desc&&!prev[0].unitPrice;
+      const label=p.type==="monthly"?"マンスリー清掃":"民泊清掃";
+      const newLine={id:Date.now()+Math.random(),desc:`${p.name}　${label}`,qty:1,unit:"式",unitPrice:Number(p.unitPrice)||0};
+      return blank?[newLine]:[...prev,newLine];
+    });
+    setShowPicker(false);
+    showToast("✅ 宿泊清掃の物件を明細に追加しました");
   };
 
   const total=lines.reduce((s,l)=>s+(Number(l.qty)||0)*(Number(l.unitPrice)||0),0); // 入力額は税込
@@ -1227,7 +1238,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
     setIssueDate(inv.issueDate||toDay());
     setDueDate(inv.dueDate||"");
     setNote(inv.note||"");
-    setLines(inv.lines&&inv.lines.length?inv.lines:[{id:Date.now(),desc:"",qty:1,unitPrice:0}]);
+    setLines(inv.lines&&inv.lines.length?inv.lines:[{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);
     setTaxRate(inv.taxRate??10);
     setShowList(false);
     showToast(`📂 ${inv.client}様の請求書を読み込みました`);
@@ -1253,7 +1264,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
     setInvoiceNo("INV-"+toDay().replace(/-/g,""));
     setClient("");setClientAddress("");setSubject("");setHonorific("御中");
     setIssueDate(toDay());setDueDate("");setNote("");
-    setLines([{id:Date.now(),desc:"",qty:1,unitPrice:0}]);setTaxRate(10);
+    setLines([{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);setTaxRate(10);
     showToast("📝 新規作成モードにしました");
   };
 
@@ -1286,7 +1297,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
           <div style={{flex:1,minWidth:0}}><FR label="支払期限（任意）"><input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/></FR></div>
         </div>
 
-        <button onClick={()=>setShowPicker(true)} style={{...S.cancelBtn,marginBottom:12}}>📋 案件・日常清掃から明細を追加</button>
+        <button onClick={()=>setShowPicker(true)} style={{...S.cancelBtn,marginBottom:12}}>📋 案件・日常清掃・宿泊清掃から明細を追加</button>
 
         <div style={S.sTitle}>明細</div>
         <p style={{fontSize:11,color:"#aaa",marginTop:-4,marginBottom:8}}>※単価は税込金額を入力してください（消費税は自動で逆算されます）</p>
@@ -1296,7 +1307,8 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
             <button onClick={()=>moveLine(l.id,1)} disabled={i===lines.length-1} style={{...S.iconBtn,padding:"0 4px",fontSize:10,opacity:i===lines.length-1?0.3:1}}>▼</button>
           </div>
           <input type="text" value={l.desc} onChange={e=>updLine(l.id,"desc",e.target.value)} placeholder="品目（例：ハウスクリーニング）" style={{flex:1}}/>
-          <NumInput value={l.qty} onCommit={v=>updLine(l.id,"qty",v)} min={1} style={{width:44,textAlign:"center"}}/>
+          <NumInput value={l.qty} onCommit={v=>updLine(l.id,"qty",v)} min={1} style={{width:36,textAlign:"center"}}/>
+          <input type="text" value={l.unit||"式"} onChange={e=>updLine(l.id,"unit",e.target.value)} style={{width:32,textAlign:"center",padding:"7px 2px"}}/>
           <span style={{fontSize:11,color:"#aaa"}}>×</span>
           <NumInput value={l.unitPrice} onCommit={v=>updLine(l.id,"unitPrice",v)} min={0} style={{width:90,textAlign:"center"}}/>
           <button onClick={()=>delLine(l.id)} style={{...S.iconBtn,color:"#ccc"}}>✕</button>
@@ -1322,9 +1334,10 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
       {showPicker&&<div style={S.modalBg} onClick={()=>setShowPicker(false)}>
         <div style={{...S.modal,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
           <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:10}}>📋 明細を選択</div>
-          <div style={{display:"flex",gap:6,marginBottom:12}}>
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
             <button onClick={()=>setPickerTab("jobs")} style={{...S.seg,...(pickerTab==="jobs"?{background:"#fff5f5",borderColor:"#c0392b",color:"#c0392b",fontWeight:700}:{})}}>案件</button>
             <button onClick={()=>setPickerTab("daily")} style={{...S.seg,...(pickerTab==="daily"?{background:"#ecfdf5",borderColor:"#2fa84f",color:"#2fa84f",fontWeight:700}:{})}}>🏠日常清掃</button>
+            <button onClick={()=>setPickerTab("stay")} style={{...S.seg,...(pickerTab==="stay"?{background:"#eff6ff",borderColor:"#1e6091",color:"#1e6091",fontWeight:700}:{})}}>🏨宿泊清掃</button>
           </div>
           {pickerTab==="jobs"?
             (pickableJobs.length===0?<div style={S.empty}>金額のある案件がありません</div>:
@@ -1338,7 +1351,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
                 <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(job.amount)}</div>
               </div>)}
             </div>)
-          :
+          :pickerTab==="daily"?
             ((dailyProps||[]).length===0?<div style={S.empty}>日常清掃の物件が登録されていません</div>:
             <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"45vh",overflowY:"auto"}}>
               {(dailyProps||[]).map(p=><div key={p.id} onClick={()=>addFromProp(p)}
@@ -1348,6 +1361,18 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
                   <div style={{fontSize:11,color:"#888"}}>日常清掃・月額</div>
                 </div>
                 <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(p.fee)}</div>
+              </div>)}
+            </div>)
+          :
+            ((stayProps||[]).length===0?<div style={S.empty}>宿泊清掃の物件が登録されていません</div>:
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"45vh",overflowY:"auto"}}>
+              {(stayProps||[]).map(p=><div key={p.id} onClick={()=>addFromStayProp(p)}
+                style={{padding:"10px 12px",borderRadius:10,border:"1.5px solid #e0d0d0",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13}}>{p.name}</div>
+                  <div style={{fontSize:11,color:"#888"}}>{p.type==="monthly"?"マンスリー":"民泊"}・1回単価</div>
+                </div>
+                <div style={{fontWeight:700,color:"#2d6a4f",fontSize:13}}>{yen(p.unitPrice)}</div>
               </div>)}
             </div>)
           }
@@ -1428,7 +1453,7 @@ function InvoiceTab({jobs,customers,dailyProps,invoiceCfg,invoices,saveInvoices,
         </tr></thead>
         <tbody>{lines.filter(l=>l.desc||l.unitPrice).map((l,i)=><tr key={l.id} style={{background:i%2===1?"#eef8f0":"#fff",borderBottom:"1px solid #eee"}}>
           <td style={{textAlign:"left",padding:"8px 8px",fontSize:13}}>{l.desc||"（品目未入力）"}</td>
-          <td style={{textAlign:"center",padding:"8px 6px",fontSize:13}}>{l.qty}</td>
+          <td style={{textAlign:"center",padding:"8px 6px",fontSize:13}}>{l.qty}{l.unit||"式"}</td>
           <td style={{textAlign:"right",padding:"8px 6px",fontSize:13}}>{yen(l.unitPrice)}</td>
           <td style={{textAlign:"right",padding:"8px 8px",fontSize:13,fontWeight:700}}>{yen((Number(l.qty)||0)*(Number(l.unitPrice)||0))}</td>
         </tr>)}</tbody>
