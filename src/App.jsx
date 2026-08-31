@@ -201,7 +201,7 @@ export default function App(){
     if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return;}
     const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
     await saveJobs(updated);
-    const nc={id:Date.now(),date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount)};
+    const nc={id:Date.now(),date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount),customerId:job.customerId||""};
     await saveCases([nc,...(cases||[])]);
     setNewCount(n=>Math.max(0,n-1));
     showToast("✅ 完了！売上に反映しました");
@@ -253,14 +253,14 @@ export default function App(){
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
-        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast}/>}
+        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
         {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} stayProps={stayProps} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
-        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast}/>}
+        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast} customers={customers}/>}
       </>}
     </div>
   </div>;
@@ -480,7 +480,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const [editJob,setEditJob]=useState(null);
   const [listMonth,setListMonth]=useState(toMonth());
   const names=stNames(staffList);
-  const blank=()=>({client:"",content:"",status:"見積済",workDate:"",startTime:"",endTime:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:"",jobType:"normal",stayPropId:""});
+  const blank=()=>({client:"",customerId:"",content:"",status:"見積済",workDate:"",startTime:"",endTime:"",staff:names[0]||"",address:"",phone:"",payment:"振込",amount:"",memo:"",jobType:"normal",stayPropId:""});
   const [form,setForm]=useState(blank());
   const calMonth=listMonth||toMonth();
   const setCalMonth=m=>setListMonth(m);
@@ -507,7 +507,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   };
   const selectCustomer=name=>{
     const c=(customers||[]).find(c=>c.name===name);
-    setForm(f=>({...f,client:name,address:c?.address||f.address,phone:c?.phone||f.phone}));
+    setForm(f=>({...f,client:name,customerId:c?.id||"",address:c?.address||f.address,phone:c?.phone||f.phone}));
   };
   const selectStayProp=pid=>{
     const id=pid?Number(pid):"";
@@ -521,7 +521,12 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       if(!form.client||!form.content){showToast("⚠ 依頼者・依頼内容は必須");return;}
     }
     const now=Date.now();
-    const payload={...form,amount:Number(form.amount)||0};
+    let customerId=form.customerId||"";
+    if(form.jobType!=="stay"&&form.client){
+      const ex=(customers||[]).find(c=>c.name===form.client);
+      customerId=ex?ex.id:now;
+    }
+    const payload={...form,customerId,amount:Number(form.amount)||0};
     if(editJob){
       await saveJobs((jobs||[]).map(j=>j.id===editJob?{...payload,id:editJob,updatedAt:now}:j));
       showToast("✅ 更新しました");
@@ -530,7 +535,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       await saveJobs([nj,...(jobs||[])]);
       if(form.jobType!=="stay"&&form.client){
         const ex=(customers||[]).find(c=>c.name===form.client);
-        if(!ex)await saveCustomers([...(customers||[]),{id:now,name:form.client,address:form.address,phone:form.phone}]);
+        if(!ex)await saveCustomers([...(customers||[]),{id:now,name:form.client,type:"個人",address:form.address,phone:form.phone}]);
         else if(form.address&&!ex.address)await saveCustomers((customers||[]).map(c=>c.name===form.client?{...c,address:form.address,phone:form.phone}:c));
       }
       showToast(form.jobType==="stay"?"✅ 宿泊清掃の予定を追加しました！":"✅ 案件を追加しました！");
@@ -670,8 +675,9 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           </div>}
         </>:<>
           <FR label="依頼者">
-            <input type="text" value={form.client} onChange={e=>{setForm({...form,client:e.target.value});selectCustomer(e.target.value);}} placeholder="鳥井さん" list="clist"/>
+            <input type="text" value={form.client} onChange={e=>{setForm({...form,client:e.target.value,customerId:""});selectCustomer(e.target.value);}} placeholder="鳥井さん（登録済みは候補から選択できます）" list="clist"/>
             <datalist id="clist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+            {form.customerId&&<div style={{fontSize:10,color:"#2d6a4f",marginTop:3}}>✓ 登録済み顧客と連携されました</div>}
           </FR>
           <FR label="依頼内容"><input type="text" value={form.content} onChange={e=>setForm({...form,content:e.target.value})} placeholder="ゴキブリ駆除・掃除"/></FR>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",columnGap:16,rowGap:0}}>
@@ -814,10 +820,12 @@ function CalendarView({jobs,calMonth,setCalMonth,onClickJob}){
 // ══════════════════════════════════════════
 // 👥 顧客タブ（メモ欄追加）
 // ══════════════════════════════════════════
+const CUSTOMER_TYPES = ["法人","個人"];
 function CustomersTab({customers,saveCustomers,jobs,showToast}){
   const [selected,setSelected]=useState(null);
   const [editMode,setEditMode]=useState(false);
-  const [form,setForm]=useState({name:"",address:"",phone:"",memo:""});
+  const [typeFilter,setTypeFilter]=useState("すべて");
+  const [form,setForm]=useState({name:"",type:"個人",address:"",phone:"",memo:""});
   const custJobs=useMemo(()=>{if(!selected)return[];return (jobs||[]).filter(j=>j.client===selected.name).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));},[selected,jobs]);
   const saveEdit=async()=>{
     if(!form.name){showToast("⚠ 顧客名は必須");return;}
@@ -826,11 +834,18 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
     setEditMode(false);setSelected(null);showToast("✅ 保存しました");
   };
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCustomers((customers||[]).filter(c=>c.id!==id));setSelected(null);showToast("🗑 削除しました");};
+  const visibleCustomers=useMemo(()=>(customers||[]).filter(c=>typeFilter==="すべて"||(c.type||"個人")===typeFilter),[customers,typeFilter]);
 
   if(editMode)return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.card}>
       <div style={{fontWeight:700,fontSize:15,color:"#8b0000",marginBottom:14}}>{selected?"✏️ 顧客を編集":"➕ 顧客を追加"}</div>
-      <FR label="顧客名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="鳥井さん"/></FR>
+      <FR label="種別">
+        <div style={{display:"flex",gap:8}}>
+          {CUSTOMER_TYPES.map(t=><button key={t} type="button" onClick={()=>setForm({...form,type:t})}
+            style={{...S.seg,...(form.type===t?{background:t==="法人"?"#eff6ff":"#fff5f5",borderColor:t==="法人"?"#1e6091":"#c0392b",color:t==="法人"?"#1e6091":"#c0392b",fontWeight:700}:{})}}>{t==="法人"?"🏢 法人":"🙋 個人"}</button>)}
+        </div>
+      </FR>
+      <FR label="顧客名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="鳥井さん／株式会社〇〇"/></FR>
       <FR label="住所"><input type="text" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} placeholder="福岡市中央区…"/></FR>
       <FR label="電話番号"><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="090-xxxx-xxxx"/></FR>
       <FR label="メモ"><textarea value={form.memo||""} onChange={e=>setForm({...form,memo:e.target.value})} rows={3} placeholder="アレルギー・鍵の場所・注意事項など" style={{width:"100%",border:"1.5px solid #e0d0d0",borderRadius:8,padding:"7px 10px",fontSize:13,resize:"vertical",outline:"none"}}/></FR>
@@ -843,7 +858,10 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
     <div style={{...S.card,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:18}}>{selected.name}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{fontWeight:700,fontSize:18}}>{selected.name}</div>
+            <span style={{fontSize:11,fontWeight:700,borderRadius:20,padding:"2px 10px",background:(selected.type||"個人")==="法人"?"#eff6ff":"#fff5f5",color:(selected.type||"個人")==="法人"?"#1e6091":"#c0392b"}}>{(selected.type||"個人")==="法人"?"🏢 法人":"🙋 個人"}</span>
+          </div>
           {selected.address&&<div style={{fontSize:12,color:"#888",marginTop:4}}>📍 {selected.address}</div>}
           {selected.phone&&<a href={`tel:${selected.phone}`} style={{display:"block",fontSize:12,color:"#c0392b",marginTop:4,textDecoration:"none"}}>📞 {selected.phone}</a>}
           {selected.memo&&<div style={{marginTop:10,background:"#faf8f5",borderRadius:8,padding:"10px 12px"}}>
@@ -852,7 +870,7 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
           </div>}
         </div>
         <div style={{display:"flex",gap:8,marginLeft:8,flexShrink:0}}>
-          <button onClick={()=>{setForm({name:selected.name,address:selected.address||"",phone:selected.phone||"",memo:selected.memo||""});setEditMode(true);}} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>✏️</button>
+          <button onClick={()=>{setForm({name:selected.name,type:selected.type||"個人",address:selected.address||"",phone:selected.phone||"",memo:selected.memo||""});setEditMode(true);}} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}}>✏️</button>
           <button onClick={()=>del(selected.id)} style={{...S.cancelBtn,padding:"6px 12px",fontSize:11,color:"#e74c3c"}}>✕</button>
         </div>
       </div>
@@ -876,18 +894,27 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
   </div>;
 
   return <div style={{animation:"fadeUp .3s ease"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontSize:13,color:"#888"}}>{(customers||[]).length}件の顧客</div>
-      <button onClick={()=>{setSelected(null);setForm({name:"",address:"",phone:"",memo:""});setEditMode(true);}} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 顧客を追加</button>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["すべて",...CUSTOMER_TYPES].map(t=><button key={t} onClick={()=>setTypeFilter(t)} style={{
+          padding:"5px 12px",borderRadius:20,border:"1.5px solid",fontSize:11,cursor:"pointer",fontWeight:600,
+          background:typeFilter===t?"#c0392b":"#fff",color:typeFilter===t?"#fff":"#888",borderColor:typeFilter===t?"#c0392b":"#ddd"
+        }}>{t}</button>)}
+      </div>
+      <button onClick={()=>{setSelected(null);setForm({name:"",type:"個人",address:"",phone:"",memo:""});setEditMode(true);}} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 顧客を追加</button>
     </div>
-    {(customers||[]).length===0?<div style={S.empty}>顧客データがありません<br/><span style={{fontSize:11}}>案件管理で案件を追加すると自動で登録されます</span></div>
-    :(customers||[]).map(c=>{
+    <div style={{fontSize:12,color:"#888",marginBottom:8}}>{visibleCustomers.length}件の顧客</div>
+    {visibleCustomers.length===0?<div style={S.empty}>顧客データがありません<br/><span style={{fontSize:11}}>案件管理で案件を追加すると自動で登録されます</span></div>
+    :visibleCustomers.map(c=>{
       const cj=(jobs||[]).filter(j=>j.client===c.name);
       const lj=cj.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
       return <div key={c.id} onClick={()=>setSelected(c)} style={{...S.card,cursor:"pointer",marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+              <span style={{fontSize:10,fontWeight:700,borderRadius:20,padding:"1px 8px",background:(c.type||"個人")==="法人"?"#eff6ff":"#fff5f5",color:(c.type||"個人")==="法人"?"#1e6091":"#c0392b"}}>{c.type||"個人"}</span>
+            </div>
             {c.phone&&<a href={`tel:${c.phone}`} onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"#c0392b",textDecoration:"none"}}>📞 {c.phone}</a>}
             {c.address&&<div style={{fontSize:11,color:"#888",marginTop:2}}>📍 {c.address.length>20?c.address.slice(0,20)+"…":c.address}</div>}
             {c.memo&&<div style={{fontSize:11,color:"#aaa",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {c.memo.length>24?c.memo.slice(0,24)+"…":c.memo}</div>}
@@ -977,14 +1004,20 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   </div>;
 }
 
-function CasesTab({month,cases,staffList,saveCases,showToast}){
+function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps}){
   const names=stNames(staffList);
-  const blank=()=>({date:toDay(),name:"",staff:names[0]||"",payment:"現金",amount:""});
+  const blank=()=>({date:toDay(),name:"",customerId:"",staff:names[0]||"",payment:"現金",amount:""});
   const [form,setForm]=useState(blank());const [editId,setEditId]=useState(null);
   const filtered=useMemo(()=>(cases||[]).filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),[cases,month]);
   const total=filtered.reduce((s,c)=>s+c.amount,0);
   const cashT=filtered.filter(c=>c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const xferT=filtered.filter(c=>c.payment==="振込").reduce((s,c)=>s+c.amount,0);
+
+  const selectCustomerForCase=name=>{
+    const c=(customers||[]).find(cu=>cu.name===name);
+    setForm(f=>({...f,customerId:c?.id||""}));
+  };
+
   const handleSave=async()=>{
     if(!form.date||!form.name||!form.amount){showToast("⚠ 日付・名前・金額は必須");return;}
     const amt=Number(form.amount);if(!amt){showToast("⚠ 金額を入力");return;}
@@ -992,11 +1025,55 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
     else{await saveCases([{...form,id:Date.now(),amount:amt},...(cases||[])]);showToast("✅ 保存");}
     setForm(blank());
   };
-  const startEdit=c=>{setForm({...c,amount:String(c.amount)});setEditId(c.id);};
+  const startEdit=c=>{setForm({...c,customerId:c.customerId||"",amount:String(c.amount)});setEditId(c.id);};
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除");};
+
+  // 🏢 顧客（法人・個人）別集計：通常案件の売上 + 日常清掃の月額を合算
+  const custTotals=useMemo(()=>{
+    const map={};
+    const ensure=(id,name,type)=>{if(!map[id])map[id]={id,name,type:type||"個人",caseTotal:0,dailyTotal:0};return map[id];};
+    filtered.forEach(c=>{
+      if(!c.customerId)return;
+      const cust=(customers||[]).find(cu=>cu.id===c.customerId);
+      const e=ensure(c.customerId,cust?.name||c.name,cust?.type);
+      e.caseTotal+=c.amount;
+    });
+    (dailyProps||[]).forEach(p=>{
+      if(!p.customerId)return;
+      const cust=(customers||[]).find(cu=>cu.id===p.customerId);
+      const e=ensure(p.customerId,cust?.name||p.name,cust?.type);
+      e.dailyTotal+=Number(p.fee)||0;
+    });
+    return Object.values(map).map(v=>({...v,grandTotal:v.caseTotal+v.dailyTotal})).sort((a,b)=>b.grandTotal-a.grandTotal);
+  },[filtered,customers,dailyProps]);
+  const custTotalsSum=custTotals.reduce((s,v)=>s+v.grandTotal,0);
 
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
+
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🏢 顧客別集計（{month}）</div>
+      <p style={{fontSize:11,color:"#aaa",marginTop:-6,marginBottom:10}}>顧客に連携された通常案件・日常清掃の合計です。請求額・入金額の突合にご利用ください。</p>
+      {custTotals.length===0?<div style={{textAlign:"center",color:"#ccc",padding:"14px 0",fontSize:12}}>この月は顧客連携済みの売上がありません<br/><span style={{fontSize:11}}>案件の依頼者欄で顧客を選択、または物件マスタで顧客を紐付けると集計されます</span></div>:
+      <div style={S.tableWrap}><table>
+        <thead><tr>
+          <th style={{textAlign:"left"}}>顧客名</th><th>種別</th>
+          <th style={{textAlign:"right"}}>通常案件</th><th style={{textAlign:"right"}}>日常清掃</th><th style={{textAlign:"right"}}>合計</th>
+        </tr></thead>
+        <tbody>{custTotals.map(v=><tr key={v.id}>
+          <td style={{textAlign:"left",fontWeight:600}}>{v.name}</td>
+          <td><span style={{fontSize:10,fontWeight:700,borderRadius:20,padding:"1px 8px",background:v.type==="法人"?"#eff6ff":"#fff5f5",color:v.type==="法人"?"#1e6091":"#c0392b"}}>{v.type}</span></td>
+          <td style={{textAlign:"right"}}>{yen(v.caseTotal)}</td>
+          <td style={{textAlign:"right"}}>{yen(v.dailyTotal)}</td>
+          <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(v.grandTotal)}</td>
+        </tr>)}</tbody>
+        <tfoot><tr style={{background:"#f0fdf4"}}>
+          <td style={{textAlign:"left",fontWeight:700}} colSpan={4}>顧客連携分 合計</td>
+          <td style={{textAlign:"right",fontWeight:700,color:"#166534"}}>{yen(custTotalsSum)}</td>
+        </tr></tfoot>
+      </table></div>}
+    </div>
+
     <div style={S.formCard}>
       <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
       <div style={{display:"flex",gap:16,marginBottom:10}}>
@@ -1004,6 +1081,10 @@ function CasesTab({month,cases,staffList,saveCases,showToast}){
         <div style={{flex:1,minWidth:0}}><FR label="担当"><select value={form.staff} onChange={e=>setForm({...form,staff:e.target.value})} style={{width:"100%",boxSizing:"border-box"}}>{names.map(n=><option key={n}>{n}</option>)}</select></FR></div>
       </div>
       <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
+      <FR label="顧客（任意・集計に反映）">
+        <input type="text" value={(customers||[]).find(c=>c.id===form.customerId)?.name||""} onChange={e=>selectCustomerForCase(e.target.value)} placeholder="登録済み顧客名を入力" list="caseClist"/>
+        <datalist id="caseClist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
+      </FR>
       <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
       <FR label="金額（円）"><input type="text" inputMode="numeric" value={form.amount} onChange={e=>{if(/^\d*$/.test(e.target.value))setForm({...form,amount:e.target.value});}} onFocus={e=>e.target.select()} placeholder="15000" style={{width:"100%"}}/></FR>
       <div style={{display:"flex",gap:8,marginTop:4}}>
@@ -1504,7 +1585,7 @@ function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,sav
   </div>;
 }
 
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,invoiceCfg,saveInvoiceCfg,showToast}){
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,invoiceCfg,saveInvoiceCfg,showToast,customers}){
   const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
@@ -1513,7 +1594,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
 
   const updPropStr=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:v}:p));
   const updPropNum=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
-  const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1,address:"",callNo:"",note:""}]);
+  const addProp=()=>setLProps([...lProps,{id:Date.now(),name:"",fee:0,cnt:1,address:"",callNo:"",note:"",customerId:""}]);
   const delProp=id=>{if(!confirm("削除しますか？"))return;setLProps(lProps.filter(p=>p.id!==id));};
 
   const updStayStr=(id,k,v)=>setLStayProps(lStayProps.map(p=>p.id===id?{...p,[k]:v}:p));
@@ -1550,7 +1631,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
 
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>🏠 物件マスタ（日常清掃）</div>
-      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます</p>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>月ごとの回数は日常清掃タブで変更できます。顧客を紐付けると「📋売上」タブの顧客別集計に含まれます。</p>
       <div style={S.tableWrap}><table>
         <thead><tr>
           <th style={{textAlign:"left",minWidth:110}}>物件名</th>
@@ -1559,6 +1640,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
           <th style={{textAlign:"left",minWidth:150}}>住所</th>
           <th style={{minWidth:70}}>呼出番号</th>
           <th style={{textAlign:"left",minWidth:100}}>備考</th>
+          <th style={{textAlign:"left",minWidth:120}}>顧客（法人・個人）</th>
           <th></th>
         </tr></thead>
         <tbody>{lProps.map(p=><tr key={p.id}>
@@ -1568,6 +1650,12 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
           <td><input type="text" value={p.address||""} onChange={e=>updPropStr(p.id,"address",e.target.value)} style={{width:"100%",minWidth:140}} placeholder="福岡市…"/></td>
           <td><input type="text" value={p.callNo||""} onChange={e=>updPropStr(p.id,"callNo",e.target.value)} style={{width:80}} placeholder="#101"/></td>
           <td><input type="text" value={p.note||""} onChange={e=>updPropStr(p.id,"note",e.target.value)} style={{width:"100%",minWidth:100}} placeholder="メモ"/></td>
+          <td>
+            <select value={p.customerId||""} onChange={e=>updPropStr(p.id,"customerId",e.target.value?Number(e.target.value):"")} style={{width:"100%",minWidth:110}}>
+              <option value="">未設定</option>
+              {(customers||[]).map(c=><option key={c.id} value={c.id}>{c.name}（{c.type||"個人"}）</option>)}
+            </select>
+          </td>
           <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delProp(p.id)}>✕</button></td>
         </tr>)}</tbody>
       </table></div>
