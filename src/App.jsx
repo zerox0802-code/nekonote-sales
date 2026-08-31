@@ -834,7 +834,10 @@ function CustomersTab({customers,saveCustomers,jobs,showToast}){
     setEditMode(false);setSelected(null);showToast("✅ 保存しました");
   };
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCustomers((customers||[]).filter(c=>c.id!==id));setSelected(null);showToast("🗑 削除しました");};
-  const visibleCustomers=useMemo(()=>(customers||[]).filter(c=>typeFilter==="すべて"||(c.type||"個人")===typeFilter),[customers,typeFilter]);
+  const visibleCustomers=useMemo(()=>(customers||[])
+    .filter(c=>typeFilter==="すべて"||(c.type||"個人")===typeFilter)
+    .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ja")),
+  [customers,typeFilter]);
 
   if(editMode)return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.card}>
