@@ -1064,8 +1064,8 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
           <th style={{textAlign:"right"}}>通常案件</th><th style={{textAlign:"right"}}>日常清掃</th><th style={{textAlign:"right"}}>合計</th>
         </tr></thead>
         <tbody>{custTotals.map(v=><tr key={v.id}>
-          <td style={{textAlign:"left",fontWeight:600}}>{v.name}</td>
-          <td><span style={{fontSize:10,fontWeight:700,borderRadius:20,padding:"1px 8px",background:v.type==="法人"?"#eff6ff":"#fff5f5",color:v.type==="法人"?"#1e6091":"#c0392b"}}>{v.type}</span></td>
+          <td style={{textAlign:"left",fontWeight:600,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</td>
+          <td><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",fontSize:10,fontWeight:700,background:v.type==="法人"?"#eff6ff":"#fff5f5",color:v.type==="法人"?"#1e6091":"#c0392b"}}>{v.type==="法人"?"法":"個"}</span></td>
           <td style={{textAlign:"right"}}>{yen(v.caseTotal)}</td>
           <td style={{textAlign:"right"}}>{yen(v.dailyTotal)}</td>
           <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(v.grandTotal)}</td>
