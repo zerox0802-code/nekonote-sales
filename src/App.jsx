@@ -253,7 +253,7 @@ export default function App(){
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
-        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props}/>}
+        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
@@ -1007,7 +1007,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   </div>;
 }
 
-function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps}){
+function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps,stayProps,stayClean,stayExtra}){
   const names=stNames(staffList);
   const blank=()=>({date:toDay(),name:"",customerId:"",staff:names[0]||"",payment:"現金",amount:""});
   const [form,setForm]=useState(blank());const [editId,setEditId]=useState(null);
@@ -1031,10 +1031,17 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
   const startEdit=c=>{setForm({...c,customerId:c.customerId||"",amount:String(c.amount)});setEditId(c.id);};
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除");};
 
-  // 🏢 顧客（法人・個人）別集計：通常案件の売上 + 日常清掃の月額を合算
+  // 🏢 顧客（法人・個人）別集計：通常案件の売上 + 日常清掃の月額 + 宿泊清掃（民泊＋マンスリー合算）を合算
+  const getStayPropMonthTotal=useCallback(p=>{
+    const totalCnt=names.reduce((s,st)=>s+Number(stayClean?.[cdKey(month,p.id,st)]||0),0);
+    const base=(p.unitPrice||0)*totalCnt;
+    const extra=Number(stayExtra?.[exKey(month,p.id)]||0);
+    return base+extra;
+  },[month,stayClean,stayExtra,staffList]);
+
   const custTotals=useMemo(()=>{
     const map={};
-    const ensure=(id,name,type)=>{if(!map[id])map[id]={id,name,type:type||"個人",caseTotal:0,dailyTotal:0};return map[id];};
+    const ensure=(id,name,type)=>{if(!map[id])map[id]={id,name,type:type||"個人",caseTotal:0,dailyTotal:0,stayTotal:0};return map[id];};
     filtered.forEach(c=>{
       if(!c.customerId)return;
       const cust=(customers||[]).find(cu=>cu.id===c.customerId);
@@ -1047,8 +1054,14 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
       const e=ensure(p.customerId,cust?.name||p.name,cust?.type);
       e.dailyTotal+=Number(p.fee)||0;
     });
-    return Object.values(map).map(v=>({...v,grandTotal:v.caseTotal+v.dailyTotal})).sort((a,b)=>b.grandTotal-a.grandTotal);
-  },[filtered,customers,dailyProps]);
+    (stayProps||[]).forEach(p=>{
+      if(!p.customerId)return;
+      const cust=(customers||[]).find(cu=>cu.id===p.customerId);
+      const e=ensure(p.customerId,cust?.name||p.name,cust?.type);
+      e.stayTotal+=getStayPropMonthTotal(p);
+    });
+    return Object.values(map).map(v=>({...v,grandTotal:v.caseTotal+v.dailyTotal+v.stayTotal})).sort((a,b)=>b.grandTotal-a.grandTotal);
+  },[filtered,customers,dailyProps,stayProps,getStayPropMonthTotal]);
   const custTotalsSum=custTotals.reduce((s,v)=>s+v.grandTotal,0);
 
   return <div style={{animation:"fadeUp .3s ease"}}>
@@ -1056,22 +1069,23 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
 
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>🏢 顧客別集計（{month}）</div>
-      <p style={{fontSize:11,color:"#aaa",marginTop:-6,marginBottom:10}}>顧客に連携された通常案件・日常清掃の合計です。請求額・入金額の突合にご利用ください。</p>
+      <p style={{fontSize:11,color:"#aaa",marginTop:-6,marginBottom:10}}>顧客に連携された通常案件・日常清掃・宿泊清掃（民泊＋マンスリー合算）の合計です。請求額・入金額の突合にご利用ください。</p>
       {custTotals.length===0?<div style={{textAlign:"center",color:"#ccc",padding:"14px 0",fontSize:12}}>この月は顧客連携済みの売上がありません<br/><span style={{fontSize:11}}>案件の依頼者欄で顧客を選択、または物件マスタで顧客を紐付けると集計されます</span></div>:
       <div style={S.tableWrap}><table>
         <thead><tr>
           <th style={{textAlign:"left"}}>顧客名</th><th>種別</th>
-          <th style={{textAlign:"right"}}>通常案件</th><th style={{textAlign:"right"}}>日常清掃</th><th style={{textAlign:"right"}}>合計</th>
+          <th style={{textAlign:"right"}}>通常案件</th><th style={{textAlign:"right"}}>日常清掃</th><th style={{textAlign:"right"}}>宿泊清掃</th><th style={{textAlign:"right"}}>合計</th>
         </tr></thead>
         <tbody>{custTotals.map(v=><tr key={v.id}>
           <td style={{textAlign:"left",fontWeight:600,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</td>
           <td><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:"50%",fontSize:10,fontWeight:700,background:v.type==="法人"?"#eff6ff":"#fff5f5",color:v.type==="法人"?"#1e6091":"#c0392b"}}>{v.type==="法人"?"法":"個"}</span></td>
           <td style={{textAlign:"right"}}>{yen(v.caseTotal)}</td>
           <td style={{textAlign:"right"}}>{yen(v.dailyTotal)}</td>
+          <td style={{textAlign:"right"}}>{yen(v.stayTotal)}</td>
           <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f"}}>{yen(v.grandTotal)}</td>
         </tr>)}</tbody>
         <tfoot><tr style={{background:"#f0fdf4"}}>
-          <td style={{textAlign:"left",fontWeight:700}} colSpan={4}>顧客連携分 合計</td>
+          <td style={{textAlign:"left",fontWeight:700}} colSpan={5}>顧客連携分 合計</td>
           <td style={{textAlign:"right",fontWeight:700,color:"#166534"}}>{yen(custTotalsSum)}</td>
         </tr></tfoot>
       </table></div>}
@@ -1667,7 +1681,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
 
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>🏨 宿泊清掃物件マスタ</div>
-      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>民泊・マンスリーの物件を登録します。1回単価×回数で売上計算します。</p>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>民泊・マンスリーの物件を登録します。1回単価×回数で売上計算します。顧客を紐付けると「📋売上」タブの顧客別集計（民泊＋マンスリー合算）に含まれます。</p>
       {lStayProps.length===0
         ?<div style={{textAlign:"center",color:"#ccc",padding:"20px 0",fontSize:13}}>物件がありません。「＋ 物件を追加」から登録してください</div>
         :<div style={S.tableWrap}><table>
@@ -1677,6 +1691,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
             <th style={{minWidth:90}}>1回単価(円)</th>
             <th style={{textAlign:"left",minWidth:150}}>住所</th>
             <th style={{textAlign:"left",minWidth:100}}>備考</th>
+            <th style={{textAlign:"left",minWidth:120}}>顧客（法人・個人）</th>
             <th></th>
           </tr></thead>
           <tbody>{lStayProps.map(p=><tr key={p.id}>
@@ -1690,6 +1705,12 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
             <td><NumInput value={p.unitPrice||0} onCommit={v=>updStayNum(p.id,"unitPrice",v)} style={{width:90}}/></td>
             <td><input type="text" value={p.address||""} onChange={e=>updStayStr(p.id,"address",e.target.value)} style={{width:"100%",minWidth:140}} placeholder="福岡市…"/></td>
             <td><input type="text" value={p.note||""} onChange={e=>updStayStr(p.id,"note",e.target.value)} style={{width:"100%",minWidth:100}} placeholder="メモ"/></td>
+            <td>
+              <select value={p.customerId||""} onChange={e=>updStayStr(p.id,"customerId",e.target.value?Number(e.target.value):"")} style={{width:"100%",minWidth:110}}>
+                <option value="">未設定</option>
+                {(customers||[]).map(c=><option key={c.id} value={c.id}>{c.name}（{c.type||"個人"}）</option>)}
+              </select>
+            </td>
             <td><button style={{...S.iconBtn,color:"#e74c3c"}} onClick={()=>delStayProp(p.id)}>✕</button></td>
           </tr>)}</tbody>
         </table></div>
