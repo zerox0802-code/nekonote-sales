@@ -1009,7 +1009,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
 
 function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps,stayProps,stayClean,stayExtra}){
   const names=stNames(staffList);
-  const blank=()=>({date:toDay(),name:"",customerId:"",staff:names[0]||"",payment:"現金",amount:""});
+  const blank=()=>({date:toDay(),name:"",customerId:"",customerName:"",staff:names[0]||"",payment:"現金",amount:""});
   const [form,setForm]=useState(blank());const [editId,setEditId]=useState(null);
   const filtered=useMemo(()=>(cases||[]).filter(c=>c.date.startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date)),[cases,month]);
   const total=filtered.reduce((s,c)=>s+c.amount,0);
@@ -1018,17 +1018,22 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
 
   const selectCustomerForCase=name=>{
     const c=(customers||[]).find(cu=>cu.name===name);
-    setForm(f=>({...f,customerId:c?.id||""}));
+    setForm(f=>({...f,customerName:name,customerId:c?.id||""}));
   };
 
   const handleSave=async()=>{
     if(!form.date||!form.name||!form.amount){showToast("⚠ 日付・名前・金額は必須");return;}
     const amt=Number(form.amount);if(!amt){showToast("⚠ 金額を入力");return;}
-    if(editId){await saveCases((cases||[]).map(c=>c.id===editId?{...form,id:editId,amount:amt}:c));setEditId(null);showToast("✅ 更新");}
-    else{await saveCases([{...form,id:Date.now(),amount:amt},...(cases||[])]);showToast("✅ 保存");}
+    const {customerName,...rest}=form;
+    if(editId){await saveCases((cases||[]).map(c=>c.id===editId?{...rest,id:editId,amount:amt}:c));setEditId(null);showToast("✅ 更新");}
+    else{await saveCases([{...rest,id:Date.now(),amount:amt},...(cases||[])]);showToast("✅ 保存");}
     setForm(blank());
   };
-  const startEdit=c=>{setForm({...c,customerId:c.customerId||"",amount:String(c.amount)});setEditId(c.id);};
+  const startEdit=c=>{
+    const cust=(customers||[]).find(cu=>cu.id===c.customerId);
+    setForm({...c,customerId:c.customerId||"",customerName:cust?.name||"",amount:String(c.amount)});
+    setEditId(c.id);
+  };
   const del=async id=>{if(!confirm("削除しますか？"))return;await saveCases((cases||[]).filter(c=>c.id!==id));showToast("🗑 削除");};
 
   // 🏢 顧客（法人・個人）別集計：通常案件の売上 + 日常清掃の月額 + 宿泊清掃（民泊＋マンスリー合算）を合算
@@ -1099,7 +1104,7 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
       </div>
       <FR label="案件名"><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="林田様 カーテン設置"/></FR>
       <FR label="顧客（任意・集計に反映）">
-        <input type="text" value={(customers||[]).find(c=>c.id===form.customerId)?.name||""} onChange={e=>selectCustomerForCase(e.target.value)} placeholder="登録済み顧客名を入力" list="caseClist"/>
+        <input type="text" value={form.customerName||""} onChange={e=>selectCustomerForCase(e.target.value)} placeholder="登録済み顧客名を入力" list="caseClist"/>
         <datalist id="caseClist">{(customers||[]).map(c=><option key={c.id} value={c.name}/>)}</datalist>
       </FR>
       <FR label="支払"><div style={{display:"flex",gap:8}}>{["現金","振込"].map(p=><button key={p} style={{...S.seg,...(form.payment===p?(p==="現金"?S.segCash:S.segXfer):{})}} onClick={()=>setForm({...form,payment:p})}>{p==="現金"?"💴 現金":"🏦 振込"}</button>)}</div></FR>
