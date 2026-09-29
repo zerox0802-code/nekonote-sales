@@ -551,6 +551,16 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const stayPropName=pid=>(stayProps||[]).find(p=>p.id===Number(pid))?.name||"";
   const locked=editJob&&form.status==="完了"&&form.jobType==="stay";
 
+  const byClient=useMemo(()=>{
+    const map={};
+    filtered.forEach(j=>{
+      const key=j.client||"（依頼者未設定）";
+      if(!map[key])map[key]=[];
+      map[key].push(j);
+    });
+    return Object.entries(map).sort(([a],[b])=>a.localeCompare(b,"ja"));
+  },[filtered]);
+
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -569,6 +579,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
         <div style={{display:"flex",gap:4}}>
           <button onClick={()=>setView("list")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="list"?"#c0392b":"#f5f5f5",color:view==="list"?"#fff":"#666"}}>📋</button>
           <button onClick={()=>setView("table")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="table"?"#c0392b":"#f5f5f5",color:view==="table"?"#fff":"#666"}}>☰</button>
+          <button onClick={()=>setView("client")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="client"?"#c0392b":"#f5f5f5",color:view==="client"?"#fff":"#666"}}>👤</button>
           <button onClick={()=>setView("calendar")} style={{...S.cancelBtn,padding:"6px 10px",fontSize:11,background:view==="calendar"?"#c0392b":"#f5f5f5",color:view==="calendar"?"#fff":"#666"}}>📅</button>
         </div>
         <button onClick={()=>openForm()} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12}}>＋ 追加</button>
@@ -609,6 +620,35 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           </tr>;
         })}</tbody>
       </table>}
+    </div>}
+
+    {view==="client"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {byClient.length===0?<div style={S.empty}>案件がありません</div>:byClient.map(([client,cJobs])=>{
+        const clientTotal=cJobs.reduce((s,j)=>s+(Number(j.amount)||0),0);
+        return <div key={client} style={S.card}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontWeight:700,fontSize:14}}>👤 {client}</div>
+            <div style={{fontSize:11,color:"#888"}}>
+              <span style={{background:"#f5eeee",color:"#888",borderRadius:10,padding:"1px 8px",marginRight:6}}>{cJobs.length}件</span>
+              {clientTotal>0&&<span style={{color:"#2d6a4f",fontWeight:700}}>{yen(clientTotal)}</span>}
+            </div>
+          </div>
+          <div style={S.tableWrap}><table>
+            <thead><tr>
+              <th style={{textAlign:"left"}}>内容</th><th>作業日</th><th>状況</th><th style={{textAlign:"right"}}>金額</th>
+            </tr></thead>
+            <tbody>{cJobs.map(job=>{
+              const sc=STATUS_COLOR[job.status]||STATUS_COLOR["キャンセル"];
+              return <tr key={job.id} style={{cursor:"pointer"}} onClick={()=>openForm(job)}>
+                <td style={{textAlign:"left",color:"#666",fontSize:11,maxWidth:110,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.jobType==="stay"&&"🏨 "}{job.content}</td>
+                <td style={{whiteSpace:"nowrap",fontSize:11}}>{job.workDate||"未定"}</td>
+                <td><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:6,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{job.status}</span></td>
+                <td style={{textAlign:"right",fontWeight:600,color:"#2d6a4f",fontSize:11}}>{job.amount>0?yen(job.amount):"−"}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </div>;
+      })}
     </div>}
 
     {view==="list"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
