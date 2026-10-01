@@ -7,8 +7,65 @@ const SK = {
   staff:"staff", monthcnt:"monthcnt", password:"password",
   jobs:"jobs", customers:"customers",
   stayProps:"stayProps", stayClean:"stayClean", stayMonthCnt:"stayMc", stayExtra:"stayExtra",
-  invoiceCfg:"invoiceCfg", invoices:"invoices",
+  invoiceCfg:"invoiceCfg", invoices:"invoices", gcalCfg:"gcalCfg",
 };
+// 🗓 Googleカレンダー自動連携設定
+// GOOGLE_CLOUD_CONSOLEで発行したOAuthクライアントIDに置き換えてください（Web案件、認証済みJavaScript生成元にVercelの本番URLを登録）
+const GCAL_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const DEFAULT_GCAL_CFG = { enabled:false, calendarId:"34a7368e2c6ff33ae8f6727c71299a32fea4d1133b96ec98abd6a0d7d1294ddf@group.calendar.google.com" };
+// 自動でGoogleカレンダーに反映する状況。ここに無い状況（キャンセル）は削除される
+const GCAL_SYNC_STATUSES = ["見込み","見積済","確定","完了"];
+const GCAL_STATUS_BADGE = { "見込み":"🟣", "見積済":"🟡", "確定":"🔴", "完了":"🟢" };
+const gcalNextDay=d=>{const dt=new Date(d+"T00:00:00");dt.setDate(dt.getDate()+1);return dt.toISOString().slice(0,10);};
+const gcalAddHour=t=>{const [h,m]=t.split(":").map(Number);const dt=new Date(2000,0,1,h,m);dt.setHours(dt.getHours()+1);return `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;};
+async function syncJobToGCal(job, token, calendarId){
+  if(!token||!calendarId)return job.gcalEventId||null;
+  const base=`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+  const headers={Authorization:`Bearer ${token}`,"Content-Type":"application/json"};
+  const shouldSync=GCAL_SYNC_STATUSES.includes(job.status)&&job.workDate;
+  if(!shouldSync){
+    if(job.gcalEventId){try{await fetch(`${base}/${job.gcalEventId}`,{method:"DELETE",headers});}catch{}}
+    return null;
+  }
+  const prefix=job.staff?job.staff[0]:"";
+  const badge=GCAL_STATUS_BADGE[job.status]||"";
+  const body={
+    summary:`${prefix}${badge}${job.content||job.client||"案件"}`,
+    description:[
+      `【依頼者】${job.client||""}`,
+      `【状況】${job.status}`,
+      job.amount?`【金額】${yen(job.amount)}`:"【金額】未定",
+      job.address?`【住所】${job.address}`:"",
+      job.phone?`【電話番号】${job.phone}`:"",
+      job.memo?`【メモ】${job.memo}`:"",
+    ].filter(Boolean).join("\n"),
+    location:job.address||undefined,
+  };
+  if(job.startTime){
+    body.start={dateTime:`${job.workDate}T${job.startTime}:00+09:00`,timeZone:"Asia/Tokyo"};
+    body.end={dateTime:`${job.workDate}T${job.endTime||gcalAddHour(job.startTime)}:00+09:00`,timeZone:"Asia/Tokyo"};
+  }else{
+    body.start={date:job.workDate};
+    body.end={date:gcalNextDay(job.workDate)};
+  }
+  try{
+    if(job.gcalEventId){
+      const res=await fetch(`${base}/${job.gcalEventId}`,{method:"PATCH",headers,body:JSON.stringify(body)});
+      if(res.ok){const data=await res.json();return data.id||job.gcalEventId;}
+      if(res.status===404){
+        const res2=await fetch(base,{method:"POST",headers,body:JSON.stringify(body)});
+        const data2=await res2.json();return data2.id||null;
+      }
+      return job.gcalEventId;
+    }
+    const res=await fetch(base,{method:"POST",headers,body:JSON.stringify(body)});
+    const data=await res.json();
+    return data.id||null;
+  }catch(e){
+    return job.gcalEventId||null;
+  }
+}
 const DEFAULT_STAFF = [{name:"公文",taxTarget:true},{name:"広田",taxTarget:true},{name:"ねこのて",taxTarget:true}];
 const DEFAULT_PROPS = [
   {id:1, name:"アメックス長尾ヒルズ", fee:30000, cnt:9},
@@ -124,6 +181,8 @@ export default function App(){
   const [invoiceCfg,setInvoiceCfg]=useState(DEFAULT_INVOICE_CFG);
   const [invoices,setInvoices]=useState([]);
   const [password,setPassword]=useState(DEFAULT_PASSWORD);
+  const [gcalCfg,setGcalCfg]=useState(DEFAULT_GCAL_CFG);
+  const [gcalToken,setGcalToken]=useState(null);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
   const [newCount,setNewCount]=useState(0);
@@ -131,13 +190,33 @@ export default function App(){
 
   useEffect(()=>{(async()=>{const pw=await stGet(SK.password);if(pw)setPassword(pw);})();}, []);
   useEffect(()=>{
+    if(document.getElementById("gcal-gsi-script"))return;
+    const s=document.createElement("script");
+    s.src="https://accounts.google.com/gsi/client";
+    s.async=true;s.id="gcal-gsi-script";
+    document.body.appendChild(s);
+  },[]);
+  const connectGoogleCalendar=()=>{
+    if(!window.google?.accounts?.oauth2){showToast("⚠ 読み込み中です。数秒待って再度お試しください");return;}
+    const client=window.google.accounts.oauth2.initTokenClient({
+      client_id:GCAL_CLIENT_ID,
+      scope:GCAL_SCOPE,
+      callback:resp=>{
+        if(resp?.access_token){setGcalToken(resp.access_token);showToast("✅ Googleカレンダーに接続しました（このタブを閉じるまで有効）");}
+        else{showToast("⚠ 接続に失敗しました");}
+      },
+    });
+    client.requestAccessToken();
+  };
+  const disconnectGoogleCalendar=()=>{setGcalToken(null);showToast("Googleカレンダー連携を解除しました");};
+  useEffect(()=>{
     if(!authed)return;
     (async()=>{
-      const [p,cl,ca,c,sf,mc,j,cu,sp,sc,smc,se,ic,iv]=await Promise.all([
+      const [p,cl,ca,c,sf,mc,j,cu,sp,sc,smc,se,ic,iv,gc]=await Promise.all([
         stGet(SK.properties),stGet(SK.cleaning),stGet(SK.cases),stGet(SK.settings),
         stGet(SK.staff),stGet(SK.monthcnt),stGet(SK.jobs),stGet(SK.customers),
         stGet(SK.stayProps),stGet(SK.stayClean),stGet(SK.stayMonthCnt),stGet(SK.stayExtra),
-        stGet(SK.invoiceCfg),stGet(SK.invoices),
+        stGet(SK.invoiceCfg),stGet(SK.invoices),stGet(SK.gcalCfg),
       ]);
       if(p)setProps(p); if(cl)setCleanData(cl); if(ca)setCases(ca); if(c)setCfg(c);
       if(sf)setStaffList(sf.map(toStaffObj)); if(mc)setMonthCntData(mc);
@@ -146,6 +225,7 @@ export default function App(){
       if(sp)setStayProps(sp); if(sc)setStayClean(sc); if(smc)setStayMonthCnt(smc); if(se)setStayExtra(se);
       if(ic)setInvoiceCfg(ic);
       if(iv)setInvoices(iv);
+      if(gc)setGcalCfg({...DEFAULT_GCAL_CFG,...gc});
       setLoading(false);
     })();
   },[authed]);
@@ -165,6 +245,7 @@ export default function App(){
   const saveInvoices=async v=>{setInvoices(v);await stSet(SK.invoices,v);};
   const saveStaff=async v=>{setStaffList(v);await stSet(SK.staff,v);};
   const savePassword=async v=>{setPassword(v);await stSet(SK.password,v);};
+  const saveGcalCfg=async v=>{setGcalCfg(v);await stSet(SK.gcalCfg,v);};
 
   const carryOver=async()=>{
     const nm=nextMo(month);
@@ -183,10 +264,11 @@ export default function App(){
     setMonth(nm);showToast(`✅ ${nm} にコピーしました`);
   };
 
+  // 成功時は更新後の案件一覧を返し、拒否（金額未入力・物件未選択など）の場合は null を返す
   const completeJob=async(job)=>{
     // 🏨 宿泊清掃（民泊・マンスリー）案件：完了時に宿泊タブの回数へ自動反映
     if(job.jobType==="stay"){
-      if(!job.stayPropId){showToast("⚠ 物件を選択してください");return;}
+      if(!job.stayPropId){showToast("⚠ 物件を選択してください");return null;}
       const wd=job.workDate||toDay();
       const mo=wd.slice(0,7);
       const key=cdKey(mo,job.stayPropId,job.staff);
@@ -196,15 +278,16 @@ export default function App(){
       await saveJobs(updated);
       setNewCount(n=>Math.max(0,n-1));
       showToast(`✅ 完了！宿泊タブ（${mo}）の回数に反映しました`);
-      return;
+      return updated;
     }
-    if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return;}
+    if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return null;}
     const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
     await saveJobs(updated);
     const nc={id:Date.now(),date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount),customerId:job.customerId||""};
     await saveCases([nc,...(cases||[])]);
     setNewCount(n=>Math.max(0,n-1));
     showToast("✅ 完了！売上に反映しました");
+    return updated;
   };
 
   const clearNew=()=>{
@@ -254,13 +337,13 @@ export default function App(){
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra}/>}
-        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps}/>}
+        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
         {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} stayProps={stayProps} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
-        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast} customers={customers}/>}
+        {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast} customers={customers} gcalCfg={gcalCfg} saveGcalCfg={saveGcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar} disconnectGoogleCalendar={disconnectGoogleCalendar}/>}
       </>}
     </div>
   </div>;
@@ -473,7 +556,7 @@ function PropertyListTab({props,stayProps}){
   </div>;
 }
 
-function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps}){
+function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps,gcalCfg,gcalToken}){
   const [view,setView]=useState("table");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
@@ -526,7 +609,12 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       const ex=(customers||[]).find(c=>c.name===form.client);
       customerId=ex?ex.id:now;
     }
-    const payload={...form,customerId,amount:Number(form.amount)||0};
+    let payload={...form,customerId,amount:Number(form.amount)||0};
+    if(gcalCfg?.enabled&&gcalToken){
+      const existing=editJob?(jobs||[]).find(j=>j.id===editJob):null;
+      const eventId=await syncJobToGCal({...payload,gcalEventId:existing?.gcalEventId},gcalToken,gcalCfg.calendarId);
+      payload={...payload,gcalEventId:eventId||undefined};
+    }
     if(editJob){
       await saveJobs((jobs||[]).map(j=>j.id===editJob?{...payload,id:editJob,updatedAt:now}:j));
       showToast("✅ 更新しました");
@@ -542,10 +630,30 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
     }
     setShowForm(false);setEditJob(null);setForm(blank());
   };
-  const deleteJob=async id=>{if(!confirm("削除しますか？"))return;await saveJobs((jobs||[]).filter(j=>j.id!==id));showToast("🗑 削除しました");};
+  const deleteJob=async id=>{
+    if(!confirm("削除しますか？"))return;
+    const job=(jobs||[]).find(j=>j.id===id);
+    if(gcalCfg?.enabled&&gcalToken&&job?.gcalEventId){
+      try{await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(gcalCfg.calendarId)}/events/${job.gcalEventId}`,{method:"DELETE",headers:{Authorization:`Bearer ${gcalToken}`}});}catch{}
+    }
+    await saveJobs((jobs||[]).filter(j=>j.id!==id));
+    showToast("🗑 削除しました");
+  };
   const changeStatus=async(job,status)=>{
-    if(status==="完了"){await completeJob({...job,amount:Number(job.amount)||0});return;}
-    await saveJobs((jobs||[]).map(j=>j.id===job.id?{...j,status,isNew:false}:j));
+    if(status==="完了"){
+      const updated=await completeJob({...job,amount:Number(job.amount)||0});
+      if(!updated)return; // 金額未入力・物件未選択などで拒否された場合は何もしない
+      if(gcalCfg?.enabled&&gcalToken){
+        const eventId=await syncJobToGCal({...job,status:"完了"},gcalToken,gcalCfg.calendarId);
+        await saveJobs(updated.map(j=>j.id===job.id?{...j,gcalEventId:eventId||undefined}:j));
+      }
+      return;
+    }
+    let gcalEventId=job.gcalEventId;
+    if(gcalCfg?.enabled&&gcalToken){
+      gcalEventId=await syncJobToGCal({...job,status},gcalToken,gcalCfg.calendarId);
+    }
+    await saveJobs((jobs||[]).map(j=>j.id===job.id?{...j,status,isNew:false,gcalEventId:gcalEventId||undefined}:j));
     showToast(`✅ ${status} に変更しました`);
   };
   const stayPropName=pid=>(stayProps||[]).find(p=>p.id===Number(pid))?.name||"";
@@ -1647,12 +1755,13 @@ function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,sav
   </div>;
 }
 
-function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,invoiceCfg,saveInvoiceCfg,showToast,customers}){
+function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePassword,stayProps,saveStayProps,invoiceCfg,saveInvoiceCfg,showToast,customers,gcalCfg,saveGcalCfg,gcalToken,connectGoogleCalendar,disconnectGoogleCalendar}){
   const [lProps,setLProps]=useState(props);useEffect(()=>setLProps(props),[props]);
   const [lStaff,setLStaff]=useState(staffList.map(toStaffObj));useEffect(()=>setLStaff(staffList.map(toStaffObj)),[staffList]);
   const [lCfg,setLCfg]=useState(cfg);useEffect(()=>setLCfg(cfg),[cfg]);
   const [lStayProps,setLStayProps]=useState(stayProps||[]);useEffect(()=>setLStayProps(stayProps||[]),[stayProps]);
   const [lInvoiceCfg,setLInvoiceCfg]=useState(invoiceCfg||DEFAULT_INVOICE_CFG);useEffect(()=>setLInvoiceCfg(invoiceCfg||DEFAULT_INVOICE_CFG),[invoiceCfg]);
+  const [lGcal,setLGcal]=useState(gcalCfg||DEFAULT_GCAL_CFG);useEffect(()=>setLGcal(gcalCfg||DEFAULT_GCAL_CFG),[gcalCfg]);
 
   const updPropStr=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:v}:p));
   const updPropNum=(id,k,v)=>setLProps(lProps.map(p=>p.id===id?{...p,[k]:Number(v)}:p));
@@ -1672,6 +1781,7 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
     await saveCfg(lCfg);
     await saveStayProps(lStayProps);
     await saveInvoiceCfg(lInvoiceCfg);
+    await saveGcalCfg(lGcal);
     showToast("✅ 保存しました");
   };
 
@@ -1789,6 +1899,27 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
         </div>
         <FR label="口座名義"><input type="text" value={lInvoiceCfg.accountHolder||""} onChange={e=>setLInvoiceCfg({...lInvoiceCfg,accountHolder:e.target.value})} placeholder="ベンリヤ）ネコノテ"/></FR>
       </div>
+    </div>
+
+    <div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🗓 Googleカレンダー自動連携（β）</div>
+      <p style={{fontSize:11,color:"#aaa",marginBottom:10}}>案件を保存すると、状況（見込み・見積済・確定・完了）に応じて自動でGoogleカレンダーに登録・更新します。キャンセルにすると自動で削除されます。宿泊清掃（民泊・マンスリー）も同様に自動登録されます。</p>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <span style={{fontSize:12,fontWeight:700,color:gcalToken?"#2d6a4f":"#c0392b"}}>{gcalToken?"● 接続済み":"○ 未接続"}</span>
+        {gcalToken
+          ?<button style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}} onClick={disconnectGoogleCalendar}>接続解除</button>
+          :<button style={{...S.cancelBtn,padding:"6px 12px",fontSize:11}} onClick={connectGoogleCalendar}>Googleに接続</button>}
+      </div>
+      <FR label="対象カレンダーID">
+        <input type="text" value={lGcal.calendarId||""} onChange={e=>setLGcal({...lGcal,calendarId:e.target.value})} placeholder="xxxx@group.calendar.google.com"/>
+      </FR>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+        <span style={{fontSize:12,color:"#888"}}>自動登録を有効にする</span>
+        <div onClick={()=>setLGcal({...lGcal,enabled:!lGcal.enabled})} style={{width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",background:lGcal.enabled?"#2d6a4f":"#ccc",transition:"background .2s"}}>
+          <div style={{position:"absolute",top:3,left:lGcal.enabled?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
+        </div>
+      </div>
+      <p style={{fontSize:10,color:"#bbb",marginTop:8}}>※「対象カレンダーID」「有効にする」の変更は下の「すべて保存」で反映されます。※Google接続はこのブラウザタブを開いている間のみ有効です（閉じたり時間が経つと切れるので、その場合は再度「Googleに接続」を押してください）。</p>
     </div>
 
     <div style={{...S.card,marginBottom:12}}>
