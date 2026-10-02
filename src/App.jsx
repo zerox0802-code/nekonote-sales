@@ -11,7 +11,7 @@ const SK = {
 };
 // 🗓 Googleカレンダー自動連携設定
 // GOOGLE_CLOUD_CONSOLEで発行したOAuthクライアントIDに置き換えてください（Web案件、認証済みJavaScript生成元にVercelの本番URLを登録）
-const GCAL_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const GCAL_CLIENT_ID = "1096285265185-t5v60dstpgu7jkd3825vvt84qj6hq34j.apps.googleusercontent.com";
 const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const DEFAULT_GCAL_CFG = { enabled:false, calendarId:"34a7368e2c6ff33ae8f6727c71299a32fea4d1133b96ec98abd6a0d7d1294ddf@group.calendar.google.com" };
 // 自動でGoogleカレンダーに反映する状況。ここに無い状況（キャンセル）は削除される
