@@ -17,8 +17,8 @@ const DEFAULT_GCAL_CFG = { enabled:false, calendarId:"34a7368e2c6ff33ae8f6727c71
 // 自動でGoogleカレンダーに反映する状況。ここに無い状況（キャンセル）は削除される
 const GCAL_SYNC_STATUSES = ["見込み","見積済","確定","完了"];
 const GCAL_STATUS_BADGE = { "見込み":"🟣", "見積済":"🟡", "確定":"🔴", "完了":"🟢" };
-// カレンダー予定名の先頭に付く担当者の頭文字（ここに無い担当者は名前の1文字目）
-const GCAL_STAFF_PREFIX = { "公文":"く", "広田":"ひ" };
+// カレンダー予定名の先頭に付く担当者の頭文字（""なら何も付けない。ここに無い担当者は名前の1文字目）
+const GCAL_STAFF_PREFIX = { "公文":"く", "広田":"ひ", "ねこのて":"" };
 const gcalNextDay=d=>{const dt=new Date(d+"T00:00:00");dt.setDate(dt.getDate()+1);return dt.toISOString().slice(0,10);};
 const gcalAddHour=t=>{const [h,m]=t.split(":").map(Number);const dt=new Date(2000,0,1,h,m);dt.setHours(dt.getHours()+1);return `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;};
 async function syncJobToGCal(job, token, calendarId){
@@ -30,7 +30,7 @@ async function syncJobToGCal(job, token, calendarId){
     if(job.gcalEventId){try{await fetch(`${base}/${job.gcalEventId}`,{method:"DELETE",headers});}catch{}}
     return null;
   }
-  const prefix=job.staff?(GCAL_STAFF_PREFIX[job.staff]||job.staff[0]):"";
+  const prefix=job.staff?(GCAL_STAFF_PREFIX[job.staff]??job.staff[0]):"";
   const badge=GCAL_STATUS_BADGE[job.status]||"";
   const body={
     summary:`${prefix}${badge}${job.content||job.client||"案件"}`,
