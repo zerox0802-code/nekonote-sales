@@ -339,7 +339,7 @@ export default function App(){
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra}/>}
-        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken}/>}
+        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
@@ -558,7 +558,7 @@ function PropertyListTab({props,stayProps}){
   </div>;
 }
 
-function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps,gcalCfg,gcalToken}){
+function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps,gcalCfg,gcalToken,connectGoogleCalendar}){
   const [view,setView]=useState("table");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
@@ -569,6 +569,32 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
   const [form,setForm]=useState(blank());
   const calMonth=listMonth||toMonth();
   const setCalMonth=m=>setListMonth(m);
+
+  // 📅 カレンダー未登録の案件（今日以降の作業日・見込み〜完了・まだ予定IDが無いもの）
+  const [bulkBusy,setBulkBusy]=useState(false);
+  const unregistered=useMemo(()=>{
+    if(!gcalCfg?.enabled)return [];
+    return (jobs||[]).filter(j=>GCAL_SYNC_STATUSES.includes(j.status)&&j.workDate&&j.workDate>=toDay()&&!j.gcalEventId)
+      .sort((a,b)=>a.workDate.localeCompare(b.workDate));
+  },[jobs,gcalCfg]);
+  const unregIds=useMemo(()=>new Set(unregistered.map(j=>j.id)),[unregistered]);
+  const bulkRegister=async()=>{
+    if(!gcalToken){connectGoogleCalendar&&connectGoogleCalendar();return;}
+    const list=unregistered;
+    if(!list.length)return;
+    const preview=list.slice(0,8).map(j=>`・${j.workDate} ${j.client||j.content||""}`).join("\n")+(list.length>8?`\n…ほか${list.length-8}件`:"");
+    if(!confirm(`${list.length}件をカレンダーに登録します。\n※すでにカレンダーへ手動で入れた予定がある場合は重複します。\n\n${preview}`))return;
+    setBulkBusy(true);
+    const idMap={};
+    for(const j of list){
+      const id=await syncJobToGCal(j,gcalToken,gcalCfg.calendarId);
+      if(id)idMap[j.id]=id;
+    }
+    await saveJobs((jobs||[]).map(j=>idMap[j.id]?{...j,gcalEventId:idMap[j.id]}:j));
+    setBulkBusy(false);
+    const ok=Object.keys(idMap).length;
+    showToast(ok===list.length?`✅ ${ok}件をカレンダーに登録しました`:`⚠ ${ok}/${list.length}件を登録（残りは接続が切れた可能性があります。再接続して再実行してください）`);
+  };
 
   const filtered=useMemo(()=>{
     let r=(jobs||[]).filter(j=>{
@@ -696,6 +722,14 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       </div>
     </div>
 
+    {unregistered.length>0&&<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:180}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#9a3412"}}>📅 カレンダー未登録の案件が {unregistered.length}件 あります</div>
+        <div style={{fontSize:11,color:"#c2410c",marginTop:2}}>{gcalToken?"ボタンで一括登録できます":"登録するにはGoogleへの接続が必要です"}</div>
+      </div>
+      <button onClick={bulkRegister} disabled={bulkBusy} style={{...S.saveBtn,width:"auto",padding:"8px 16px",fontSize:12,opacity:bulkBusy?0.6:1}}>{bulkBusy?"登録中…":gcalToken?"一括登録":"Googleに接続"}</button>
+    </div>}
+
     {view==="calendar"&&<CalendarView jobs={jobs||[]} calMonth={calMonth} setCalMonth={setCalMonth} onClickJob={openForm}/>}
     {view==="table"&&<div style={{...S.tableWrap,marginBottom:12}}>
       {filtered.length===0?<div style={S.empty}>案件がありません</div>:
@@ -711,6 +745,7 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
           return <tr key={job.id} style={{cursor:"pointer"}} onClick={()=>openForm(job)}>
             <td style={{textAlign:"left",fontWeight:600,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               {job.isNew&&job.status!=="完了"&&job.status!=="キャンセル"&&<span style={{background:"#e03030",color:"#fff",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4}}>NEW</span>}
+              {unregIds.has(job.id)&&<span style={{background:"#fed7aa",color:"#9a3412",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4}}>📅未</span>}
               {job.jobType==="stay"&&"🏨 "}{job.client}
             </td>
             <td style={{textAlign:"left",color:"#666",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.content}</td>
