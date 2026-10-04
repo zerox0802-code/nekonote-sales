@@ -146,20 +146,42 @@ function NumInput({value,onCommit,style,min=0}){
     onFocus={e=>e.target.select()} style={style}/>;
 }
 
+// 🎨 ログイン画面の見た目（開くたびにランダムで切り替わる。直前と同じ組み合わせは出ない）
+const LOGIN_THEMES = [
+  {icon:"🐾",msg:"今日も一日、おつかれさまです",bg:"radial-gradient(ellipse at 50% 40%,#3a0808,#1a0505)",card:"rgba(28,8,8,0.95)",border:"#551111",btn:"linear-gradient(135deg,#a00,#e03)",sub:"#884444",input:"rgba(80,20,20,0.5)"},
+  {icon:"🌙",msg:"夜の作業もおつかれさまです",bg:"radial-gradient(ellipse at 50% 40%,#12295c,#050a1a)",card:"rgba(8,14,30,0.95)",border:"#1f3a6e",btn:"linear-gradient(135deg,#1e3a8a,#3b82f6)",sub:"#6b86b8",input:"rgba(20,40,90,0.5)"},
+  {icon:"🌿",msg:"ていねいな仕事が信頼になる",bg:"radial-gradient(ellipse at 50% 40%,#0f3a22,#04100a)",card:"rgba(6,24,14,0.95)",border:"#1d5a35",btn:"linear-gradient(135deg,#166534,#22c55e)",sub:"#6fa585",input:"rgba(20,80,45,0.5)"},
+  {icon:"🌇",msg:"今日もいい現場でありますように",bg:"radial-gradient(ellipse at 50% 40%,#5a2410,#1a0a05)",card:"rgba(30,14,6,0.95)",border:"#7a3a14",btn:"linear-gradient(135deg,#c2410c,#f59e0b)",sub:"#b98a5a",input:"rgba(100,50,20,0.5)"},
+  {icon:"🐈‍⬛",msg:"ねこの手も借りたい日もある",bg:"radial-gradient(ellipse at 50% 40%,#3a1650,#12061c)",card:"rgba(22,8,32,0.95)",border:"#5b2a80",btn:"linear-gradient(135deg,#6b21a8,#c026d3)",sub:"#a07fbf",input:"rgba(70,25,100,0.5)"},
+  {icon:"🐟",msg:"ピカピカに仕上げよう",bg:"radial-gradient(ellipse at 50% 40%,#0c3d44,#041418)",card:"rgba(6,24,28,0.95)",border:"#16666f",btn:"linear-gradient(135deg,#0e7490,#22d3ee)",sub:"#6fb0b8",input:"rgba(15,80,90,0.5)"},
+  {icon:"🌸",msg:"笑顔でいってらっしゃい",bg:"radial-gradient(ellipse at 50% 40%,#4a1230,#1a0510)",card:"rgba(30,8,20,0.95)",border:"#7a2250",btn:"linear-gradient(135deg,#be185d,#f472b6)",sub:"#c08aa5",input:"rgba(100,25,65,0.5)"},
+  {icon:"☀️",msg:"安全第一、今日もがんばろう",bg:"radial-gradient(ellipse at 50% 40%,#4a3a08,#1a1403)",card:"rgba(28,22,4,0.95)",border:"#7a6210",btn:"linear-gradient(135deg,#a16207,#eab308)",sub:"#b9a55a",input:"rgba(100,80,15,0.5)"},
+];
+const pickLoginThemeIdx=()=>{
+  let last=-1;
+  try{const v=localStorage.getItem("loginThemeIdx");if(v!==null)last=Number(v);}catch{}
+  let i=0;
+  if(LOGIN_THEMES.length>1){do{i=Math.floor(Math.random()*LOGIN_THEMES.length);}while(i===last);}
+  try{localStorage.setItem("loginThemeIdx",String(i));}catch{}
+  return i;
+};
+
 function Login({onLogin,password}){
   const [pw,setPw]=useState("");const [err,setErr]=useState(false);const [shake,setShake]=useState(false);
+  const [theme]=useState(()=>LOGIN_THEMES[pickLoginThemeIdx()]);
   const go=()=>{if(pw===password)onLogin();else{setErr(true);setShake(true);setTimeout(()=>setShake(false),500);}};
-  return <div style={S.loginBg}><style>{css}</style>
-    <div style={{...S.loginCard,animation:shake?"shake .4s":"rise .5s ease"}}>
-      <div style={S.loginIcon}>🐾</div>
+  return <div style={{...S.loginBg,background:theme.bg}}><style>{css}</style>
+    <div style={{...S.loginCard,background:theme.card,border:`1px solid ${theme.border}`,animation:shake?"shake .4s":"rise .5s ease"}}>
+      <div style={S.loginIcon}>{theme.icon}</div>
       <div style={S.loginTitle}>便利屋 ねこのて</div>
-      <div style={S.loginSub}>売上管理システム</div>
-      <input style={{...S.loginInput,borderColor:err?"#ff6b6b":"#441111"}} type="password"
+      <div style={{...S.loginSub,color:theme.sub}}>売上管理システム</div>
+      <div style={{fontSize:12,color:theme.sub,marginTop:-2,marginBottom:6,textAlign:"center"}}>{theme.msg}</div>
+      <input style={{...S.loginInput,background:theme.input,borderColor:err?"#ff6b6b":theme.border}} type="password"
         placeholder="パスワードを入力" value={pw}
         onChange={e=>{setPw(e.target.value);setErr(false);}}
         onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
       {err&&<p style={{color:"#ff6b6b",fontSize:12,marginTop:-4}}>パスワードが違います</p>}
-      <button style={S.loginBtn} onClick={go}>ログイン</button>
+      <button style={{...S.loginBtn,background:theme.btn}} onClick={go}>ログイン</button>
     </div>
   </div>;
 }
