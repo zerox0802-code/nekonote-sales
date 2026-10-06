@@ -2107,6 +2107,7 @@ const PRICE_DATA = {
       {key:"extra_room", label:"部屋追加（+1部屋）", price:6000, perUnit:true, unitLabel:"部屋"},
       {key:"detached_add", label:"分譲・戸建て追加", price:13000},
       {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
+      {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
     ]
   },
   bee: {
@@ -2121,16 +2122,16 @@ const PRICE_DATA = {
       {key:"size_15_20", label:"巣サイズ 15-20cm〜", price:6000},
       {key:"height", label:"高所・難所追加", price:3000},
       {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
+      {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
     ]
   },
   hourly: {
     label:"⏰ 時間工賃",
+    workers:true, rate:3300,
     items:[],
     options:[
-      {key:"hour", label:"作業時間（1時間）", price:3300, perUnit:true, unitLabel:"時間"},
-      {key:"half", label:"作業時間（30分）", price:1650, perUnit:true, unitLabel:"30分"},
       {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
-      {key:"staff", label:"スタッフ追加（+1名）", price:3300, perUnit:true, unitLabel:"名"},
+      {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
       {key:"disposal", label:"処分費（不用品回収・草刈り等）", price:15, perUnit:true, unitLabel:"kg", step:10, input:true},
     ]
   },
@@ -2141,10 +2142,12 @@ const PRICE_DATA = {
       {key:"tech", label:"技術料", price:3300},
       {key:"material", label:"資材費", price:3300},
       {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
+      {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
     ]
   },
 };
 
+const makeWorker=()=>({id:Date.now()+Math.random(),name:"",hours:""});
 function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
   const names = stNames(staffList);
   const [category,setCategory]=useState("house");
@@ -2154,9 +2157,18 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
   const [client,setClient]=useState("");
   const [staff,setStaff]=useState(names[0]||"");
   const [workDate,setWorkDate]=useState("");
+  const [workers,setWorkers]=useState(()=>[makeWorker()]);
 
   const cat = PRICE_DATA[category];
-  const resetForm=()=>{setSelectedItem(null);setOptionCounts({});setMemo("");};
+  const workerAmt=w=>Math.round((Number(w.hours)||0)*(cat.rate||0));
+  const workerLabel=(w,i)=>w.name||`スタッフ${i+1}`;
+  const updWorker=(id,patch)=>setWorkers(prev=>prev.map(w=>w.id===id?{...w,...patch}:w));
+  const stepWorker=(id,d)=>setWorkers(prev=>prev.map(w=>w.id===id?{...w,hours:String(Math.max(0,(Number(w.hours)||0)+d))}:w));
+  const addWorker=()=>setWorkers(prev=>[...prev,makeWorker()]);
+  const delWorker=id=>setWorkers(prev=>prev.length>1?prev.filter(w=>w.id!==id):prev);
+  const workersTotal=cat.workers?workers.reduce((sum,w)=>sum+workerAmt(w),0):0;
+  const totalHours=cat.workers?workers.reduce((sum,w)=>sum+(Number(w.hours)||0),0):0;
+  const resetForm=()=>{setSelectedItem(null);setOptionCounts({});setMemo("");setWorkers([makeWorker()]);};
   const changeCategory=(k)=>{setCategory(k);resetForm();};
 
   const basePrice = selectedItem?.price||0;
@@ -2165,7 +2177,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     if(!opt||!cnt)return sum;
     return sum+(opt.perUnit?opt.price*cnt:opt.price);
   },0);
-  const grandTotal = basePrice+optTotal;
+  const grandTotal = basePrice+optTotal+workersTotal;
 
   const setOptCount=(key,delta)=>{
     setOptionCounts(prev=>{
@@ -2185,6 +2197,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     if(!client){showToast("⚠ 依頼者を入力してください");return;}
     const lines=[`【見積】${cat.label}`];
     if(selectedItem)lines.push(`  ${selectedItem.label}：${yen(selectedItem.price||0)}`);
+    if(cat.workers)workers.forEach((w,i)=>{if(Number(w.hours)>0)lines.push(`  ${workerLabel(w,i)}：${Number(w.hours)}時間 ${yen(workerAmt(w))}`);});
     cat.options.forEach(o=>{
       const cnt=optionCounts[o.key]||0;
       if(!cnt)return;
@@ -2230,6 +2243,31 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
       </div>
     </div>}
 
+    {cat.workers&&<div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>作業スタッフ（1人ずつの時間）</div>
+      <p style={{fontSize:11,color:"#aaa",marginTop:-6,marginBottom:6}}>1時間 {yen(cat.rate)}／人。人によって作業時間が違うときは、それぞれ入力してください。</p>
+      {workers.map((w,i)=><div key={w.id} style={{padding:"10px 0",borderBottom:"1px solid #f5eeee"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <input type="text" value={w.name} onChange={e=>updWorker(w.id,{name:e.target.value})} placeholder={`スタッフ${i+1}`} style={{flex:1}}/>
+          {workers.length>1&&<button onClick={()=>delWorker(w.id)} style={{...S.iconBtn,color:"#ccc",fontSize:16}}>✕</button>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>stepWorker(w.id,-0.5)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>－</button>
+            <input type="text" inputMode="decimal" value={w.hours} placeholder="0" onChange={e=>{if(/^\d*\.?\d*$/.test(e.target.value))updWorker(w.id,{hours:e.target.value});}} onFocus={e=>e.target.select()} style={{width:64,textAlign:"center",padding:"4px 2px",fontWeight:700}}/>
+            <span style={{fontSize:12,color:"#888"}}>時間</span>
+            <button onClick={()=>stepWorker(w.id,0.5)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>＋</button>
+          </div>
+          <div style={{fontWeight:700,color:"#2d6a4f",fontSize:14,whiteSpace:"nowrap"}}>{yen(workerAmt(w))}</div>
+        </div>
+      </div>)}
+      <button style={{...S.cancelBtn,marginTop:10}} onClick={addWorker}>＋ スタッフを追加</button>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:10,fontSize:12,color:"#666"}}>
+        <span>合計 {totalHours}時間・{workers.filter(w=>Number(w.hours)>0).length}名</span>
+        <b style={{color:"#166534"}}>{yen(workersTotal)}</b>
+      </div>
+    </div>}
+
     {cat.options.length>0&&<div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>オプション</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -2264,6 +2302,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
       </div>
       {grandTotal>0&&<div style={{marginTop:8,fontSize:11,color:"#4ade80"}}>
         {selectedItem&&<div>{selectedItem.label}：{yen(selectedItem.price||0)}</div>}
+        {cat.workers&&workers.map((w,i)=>Number(w.hours)>0&&<div key={w.id}>{workerLabel(w,i)}：{Number(w.hours)}時間 {yen(workerAmt(w))}</div>)}
         {cat.options.filter(o=>optionCounts[o.key]>0).map(o=>(
           <div key={o.key}>{o.label}{o.perUnit?` ×${optionCounts[o.key]}${o.unitLabel==="kg"?"kg":""}`:""}：{yen(o.perUnit?o.price*(optionCounts[o.key]||0):o.price)}</div>
         ))}
