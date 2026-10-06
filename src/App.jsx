@@ -2106,7 +2106,7 @@ const PRICE_DATA = {
     options:[
       {key:"extra_room", label:"部屋追加（+1部屋）", price:6000, perUnit:true, unitLabel:"部屋"},
       {key:"detached_add", label:"分譲・戸建て追加", price:13000},
-      {key:"travel", label:"出張費", price:2200},
+      {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
     ]
   },
   bee: {
@@ -2120,7 +2120,7 @@ const PRICE_DATA = {
       {key:"size_10_15", label:"巣サイズ 10-15cm", price:3000},
       {key:"size_15_20", label:"巣サイズ 15-20cm〜", price:6000},
       {key:"height", label:"高所・難所追加", price:3000},
-      {key:"travel", label:"出張費", price:2200},
+      {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
     ]
   },
   hourly: {
@@ -2128,8 +2128,10 @@ const PRICE_DATA = {
     items:[],
     options:[
       {key:"hour", label:"作業時間（1時間）", price:3300, perUnit:true, unitLabel:"時間"},
-      {key:"travel", label:"出張費", price:2200},
+      {key:"half", label:"作業時間（30分）", price:1650, perUnit:true, unitLabel:"30分"},
+      {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
       {key:"staff", label:"スタッフ追加（+1名）", price:3300, perUnit:true, unitLabel:"名"},
+      {key:"disposal", label:"処分費（不用品回収・草刈り等）", price:15, perUnit:true, unitLabel:"kg", step:10, input:true},
     ]
   },
   pesticide: {
@@ -2138,7 +2140,7 @@ const PRICE_DATA = {
     options:[
       {key:"tech", label:"技術料", price:3300},
       {key:"material", label:"資材費", price:3300},
-      {key:"travel", label:"出張費", price:2200},
+      {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
     ]
   },
 };
@@ -2186,7 +2188,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     cat.options.forEach(o=>{
       const cnt=optionCounts[o.key]||0;
       if(!cnt)return;
-      lines.push(`  ${o.label}${o.perUnit?` ×${cnt}`:""}：${yen(o.perUnit?o.price*cnt:o.price)}`);
+      lines.push(`  ${o.label}${o.perUnit?` ×${cnt}${o.unitLabel==="kg"?"kg":""}`:""}：${yen(o.perUnit?o.price*cnt:o.price)}`);
     });
     lines.push(`  合計：${yen(grandTotal)}`);
     if(memo)lines.push(`  メモ：${memo}`);
@@ -2240,9 +2242,11 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
             </div>
             {opt.perUnit
               ?<div style={{display:"flex",alignItems:"center",gap:8}}>
-                <button onClick={()=>setOptCount(opt.key,-1)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>－</button>
-                <span style={{minWidth:24,textAlign:"center",fontWeight:700}}>{cnt}</span>
-                <button onClick={()=>setOptCount(opt.key,1)} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>＋</button>
+                <button onClick={()=>setOptCount(opt.key,-(opt.step||1))} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>－</button>
+                {opt.input
+                  ?<input type="text" inputMode="numeric" value={cnt?String(cnt):""} placeholder="0" onChange={e=>{if(/^\d*$/.test(e.target.value))setOptionCounts(prev=>({...prev,[opt.key]:Number(e.target.value)||0}));}} onFocus={e=>e.target.select()} style={{width:72,textAlign:"center",padding:"4px 2px",fontWeight:700}}/>
+                  :<span style={{minWidth:24,textAlign:"center",fontWeight:700}}>{cnt}</span>}
+                <button onClick={()=>setOptCount(opt.key,(opt.step||1))} style={{...S.cancelBtn,padding:"4px 10px",fontSize:14}}>＋</button>
               </div>
               :<div onClick={()=>toggleOption(opt.key)} style={{width:42,height:24,borderRadius:12,cursor:"pointer",position:"relative",background:cnt?"#c0392b":"#ccc",transition:"background .2s",flexShrink:0}}>
                 <div style={{position:"absolute",top:3,left:cnt?20:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .2s"}}/>
@@ -2261,7 +2265,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
       {grandTotal>0&&<div style={{marginTop:8,fontSize:11,color:"#4ade80"}}>
         {selectedItem&&<div>{selectedItem.label}：{yen(selectedItem.price||0)}</div>}
         {cat.options.filter(o=>optionCounts[o.key]>0).map(o=>(
-          <div key={o.key}>{o.label}{o.perUnit?` ×${optionCounts[o.key]}`:""}：{yen(o.perUnit?o.price*(optionCounts[o.key]||0):o.price)}</div>
+          <div key={o.key}>{o.label}{o.perUnit?` ×${optionCounts[o.key]}${o.unitLabel==="kg"?"kg":""}`:""}：{yen(o.perUnit?o.price*(optionCounts[o.key]||0):o.price)}</div>
         ))}
       </div>}
     </div>
