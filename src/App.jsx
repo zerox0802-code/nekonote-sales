@@ -336,6 +336,15 @@ export default function App(){
     ["invoice","🧾請求書"],
     ["cfg","⚙設定"],
   ];
+  // 🗂 タブを4グループに整理（上段＝グループ、下段＝そのグループのタブ）
+  const TAB_GROUPS=[
+    ["🗂案件",["jobs","future","estimate"]],
+    ["🧹清掃",["cleaning","stay","proplist"]],
+    ["💰お金",["cases","closing","invoice"]],
+    ["📇管理",["customers","cfg"]],
+  ];
+  const curGroup=TAB_GROUPS.find(([,ks])=>ks.includes(tab))||TAB_GROUPS[0];
+  const goTab=k=>{setTab(k);if(k==="jobs")clearNew();};
 
   return <div style={S.app}><style>{css}</style>
     {toast&&<div style={S.toast}>{toast}</div>}
@@ -352,10 +361,19 @@ export default function App(){
       </div>
       <button style={S.logoutBtn} onClick={()=>setAuthed(false)}>ログアウト</button>
     </div>
+    <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #fde8e8"}}>
+      {TAB_GROUPS.map(([label,keys])=>{
+        const on=curGroup[0]===label;
+        return <button key={label} onClick={()=>goTab(keys[0])} style={{flex:1,padding:"10px 4px",background:on?"#c0392b":"#fff",color:on?"#fff":"#888",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+          {label}{keys.includes("jobs")&&newCount>0?"🆕":""}
+        </button>;
+      })}
+    </div>
     <div style={S.tabs}>
-      {tabs.map(([k,v])=>(
-        <button key={k} style={{...S.tab,...(tab===k?S.tabOn:{})}} onClick={()=>{setTab(k);if(k==="jobs")clearNew();}}>{v}</button>
-      ))}
+      {curGroup[1].map(k=>{
+        const v=tabs.find(t=>t[0]===k)[1];
+        return <button key={k} style={{...S.tab,flex:1,...(tab===k?S.tabOn:{})}} onClick={()=>goTab(k)}>{v}</button>;
+      })}
     </div>
     <div style={S.body}>
       {loading?<div style={S.empty}>読み込み中…</div>:<>
