@@ -399,7 +399,7 @@ export default function App(){
         {tab==="cleaning"&&<CleaningTab month={month} props={props} staffList={staffList} cleanData={cleanData} saveClean={saveClean} monthCntData={monthCntData} saveMonthCnt={saveMonthCnt} carryOver={carryOver}/>}
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
-        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra}/>}
+        {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cleanData={cleanData} monthCntData={monthCntData}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} revertCompletion={revertCompletion} syncCompletedCase={syncCompletedCase} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
@@ -1262,7 +1262,7 @@ function CleaningTab({month,props,staffList,cleanData,saveClean,monthCntData,sav
   </div>;
 }
 
-function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps,stayProps,stayClean,stayExtra}){
+function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProps,stayProps,stayClean,stayExtra,cleanData,monthCntData}){
   const names=stNames(staffList);
   const blank=()=>({date:toDay(),name:"",customerId:"",customerName:"",staff:names[0]||"",payment:"現金",amount:""});
   const [form,setForm]=useState(blank());const [editId,setEditId]=useState(null);
@@ -1337,6 +1337,49 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
   },[filtered,customers,dailyProps,stayProps,getStayPropMonthTotal]);
   const custTotalsSum=custTotals.reduce((s,v)=>s+v.grandTotal,0);
 
+  // 🔍 顧客別集計の合計 → 締めの月売上合計 までの差額の内訳
+  const reconItems=useMemo(()=>{
+    const items=[];
+    filtered.forEach(c=>{
+      const inStaff=names.includes(c.staff);
+      const eff=(inStaff?c.amount:0)-(c.customerId?c.amount:0);
+      if(eff!==0){
+        const notes=[];
+        if(!c.customerId)notes.push("顧客未連携");
+        if(!inStaff)notes.push(`担当「${c.staff||"なし"}」がスタッフ一覧にないため締めに入らない`);
+        items.push({key:"c"+c.id,label:`案件：${c.name}`,eff,note:notes.join("／")});
+      }
+    });
+    (dailyProps||[]).forEach(p=>{
+      const mc=monthCntData?.[mcKey(month,p.id)]??(p.cnt||0);
+      const counts={};names.forEach(st=>counts[st]=Number(cleanData?.[cdKey(month,p.id,st)]||0));
+      const closingAmt=calcStaffSales(p.fee,mc,counts,names).reduce((a,b)=>a+b,0);
+      const totalCnt=names.reduce((s,st)=>s+counts[st],0);
+      const eff=closingAmt-(p.customerId?(Number(p.fee)||0):0);
+      if(eff!==0){
+        const notes=[];
+        if(!p.customerId)notes.push("顧客未連携");
+        else if(totalCnt===0)notes.push("清掃回数が未入力（顧客別は月額満額で計上）");
+        else if(totalCnt!==mc)notes.push(`回数 ${totalCnt}/${mc}（月回数と不一致）`);
+        items.push({key:"d"+p.id,label:`日常清掃：${p.name}（月額 ${yen(p.fee)}）`,eff,note:notes.join("／")});
+      }
+    });
+    (stayProps||[]).forEach(p=>{
+      const totalCnt=names.reduce((s,st)=>s+Number(stayClean?.[cdKey(month,p.id,st)]||0),0);
+      const extra=Number(stayExtra?.[exKey(month,p.id)]||0);
+      const closingAmt=(p.unitPrice||0)*totalCnt+(totalCnt>0?extra:0);
+      const eff=closingAmt-(p.customerId?getStayPropMonthTotal(p):0);
+      if(eff!==0){
+        const notes=[];
+        if(!p.customerId)notes.push("顧客未連携");
+        else if(totalCnt===0&&extra>0)notes.push("回数0なのに追加料金あり");
+        items.push({key:"s"+p.id,label:`宿泊清掃：${p.name}`,eff,note:notes.join("／")});
+      }
+    });
+    return items;
+  },[filtered,dailyProps,stayProps,month,cleanData,monthCntData,stayClean,stayExtra,staffList,getStayPropMonthTotal]);
+  const reconSum=reconItems.reduce((s,v)=>s+v.eff,0);
+
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
     {dupIds.size>0&&<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:12,padding:"10px 14px",marginBottom:12}}>
@@ -1367,6 +1410,20 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
         </tr></tfoot>
       </table></div>}
     </div>
+
+    {reconItems.length>0&&<div style={{...S.card,marginBottom:12}}>
+      <div style={S.sTitle}>🔍 顧客別集計と締めの差額（{month}）</div>
+      <p style={{fontSize:11,color:"#aaa",marginTop:-6,marginBottom:10}}>「顧客連携分 合計」から、締めタブの「月売上合計」になるまでの内訳です。ここに出た行が、数字がずれる原因です。</p>
+      <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f5eeee",fontSize:12}}><span style={{color:"#666"}}>顧客連携分 合計</span><b>{yen(custTotalsSum)}</b></div>
+      {reconItems.map(v=><div key={v.key} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #f5eeee"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#333"}}>{v.label}</div>
+          {v.note&&<div style={{fontSize:10,color:"#c2410c",marginTop:2}}>{v.note}</div>}
+        </div>
+        <b style={{fontSize:12,whiteSpace:"nowrap",color:v.eff<0?"#c0392b":"#2d6a4f"}}>{v.eff>0?"+":"−"}{yen(Math.abs(v.eff))}</b>
+      </div>)}
+      <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",fontSize:13}}><b style={{color:"#166534"}}>締めの月売上合計（計算上）</b><b style={{color:"#166534"}}>{yen(custTotalsSum+reconSum)}</b></div>
+    </div>}
 
     <div style={S.formCard}>
       <div style={S.formTitle}>{editId?"✏️ 編集":"➕ 案件売上を追加"}</div>
