@@ -298,9 +298,12 @@ export default function App(){
       const wd=job.workDate||toDay();
       const mo=wd.slice(0,7);
       const key=cdKey(mo,job.stayPropId,job.staff);
-      const newCnt=Number(stayClean[key]||0)+1;
-      await saveStayClean({...stayClean,[key]:newCnt});
-      const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
+      const base={...stayClean};
+      const oldKey=job.stayCountKey;
+      if(oldKey&&Number(base[oldKey]||0)>0)base[oldKey]=Number(base[oldKey])-1; // 以前の完了分は先に取り消す（二重カウント防止）
+      base[key]=Number(base[key]||0)+1;
+      await saveStayClean(base);
+      const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay(),stayCountKey:key}:j);
       await saveJobs(updated);
       setNewCount(n=>Math.max(0,n-1));
       showToast(`✅ 完了！宿泊タブ（${mo}）の回数に反映しました`);
@@ -309,11 +312,27 @@ export default function App(){
     if(!job.amount){showToast("⚠ 金額を入力してから完了にしてください");return null;}
     const updated=(jobs||[]).map(j=>j.id===job.id?{...j,status:"完了",isNew:false,completedAt:toDay()}:j);
     await saveJobs(updated);
-    const nc={id:Date.now(),date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount),customerId:job.customerId||""};
-    await saveCases([nc,...(cases||[])]);
+    const nc={id:Date.now(),jobId:job.id,date:job.workDate||toDay(),name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount),customerId:job.customerId||""};
+    // 同じ案件の売上が既にあれば置き換える（重複防止）。jobId導入前の古い行も、同名・同日なら置き換える
+    const restCases=(cases||[]).filter(c=>c.jobId!==job.id&&!(c.jobId===undefined&&c.name===nc.name&&c.date===nc.date));
+    await saveCases([nc,...restCases]);
     setNewCount(n=>Math.max(0,n-1));
     showToast("✅ 完了！売上に反映しました");
     return updated;
+  };
+
+  // 完了を取り消したとき：売上（通常案件）または宿泊タブの回数（宿泊清掃）を元に戻す
+  const revertCompletion=async(job)=>{
+    if(job.jobType==="stay"){
+      const k=job.stayCountKey||cdKey((job.workDate||job.completedAt||toDay()).slice(0,7),job.stayPropId,job.staff);
+      if(Number(stayClean[k]||0)>0)await saveStayClean({...stayClean,[k]:Number(stayClean[k])-1});
+    }else{
+      await saveCases((cases||[]).filter(c=>c.jobId!==job.id&&!(c.jobId===undefined&&c.name===`${job.client} ${job.content}`&&c.date===(job.workDate||job.completedAt))));
+    }
+  };
+  // 完了のまま内容（担当・金額・日付など）を直したとき：売上の行も同じ内容に更新する
+  const syncCompletedCase=async(job)=>{
+    await saveCases((cases||[]).map(c=>c.jobId===job.id?{...c,date:job.workDate||c.date,name:`${job.client} ${job.content}`,staff:job.staff,payment:job.payment||"振込",amount:Number(job.amount)||c.amount,customerId:job.customerId||""}:c));
   };
 
   const clearNew=()=>{
@@ -381,7 +400,7 @@ export default function App(){
         {tab==="stay"&&<StayTab month={month} stayProps={stayProps} staffList={staffList} stayClean={stayClean} saveStayClean={saveStayClean} stayExtra={stayExtra} saveStayExtra={saveStayExtra}/>}
         {tab==="proplist"&&<PropertyListTab props={props} stayProps={stayProps}/>}
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra}/>}
-        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar}/>}
+        {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} revertCompletion={revertCompletion} syncCompletedCase={syncCompletedCase} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
@@ -600,7 +619,7 @@ function PropertyListTab({props,stayProps}){
   </div>;
 }
 
-function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,showToast,stayProps,gcalCfg,gcalToken,connectGoogleCalendar}){
+function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,revertCompletion,syncCompletedCase,showToast,stayProps,gcalCfg,gcalToken,connectGoogleCalendar}){
   const [view,setView]=useState("table");
   const [filterStatus,setFilterStatus]=useState("全て");
   const [showForm,setShowForm]=useState(false);
@@ -686,6 +705,15 @@ function JobsTab({jobs,saveJobs,customers,saveCustomers,staffList,completeJob,sh
       payload={...payload,gcalEventId:eventId||undefined};
     }
     if(editJob){
+      const before=(jobs||[]).find(j=>j.id===editJob);
+      if(before&&before.status==="完了"){
+        if(form.status!=="完了"){
+          await revertCompletion(before); // 完了を取り消す → 売上／回数も取り消す
+          delete payload.stayCountKey;delete payload.completedAt;
+        }else if(form.jobType!=="stay"){
+          await syncCompletedCase({...payload,id:editJob}); // 完了のまま修正 → 売上の行も更新
+        }
+      }
       await saveJobs((jobs||[]).map(j=>j.id===editJob?{...payload,id:editJob,updatedAt:now}:j));
       showToast("✅ 更新しました");
     }else{
@@ -1242,6 +1270,19 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
   const total=filtered.reduce((s,c)=>s+c.amount,0);
   const cashT=filtered.filter(c=>c.payment==="現金").reduce((s,c)=>s+c.amount,0);
   const xferT=filtered.filter(c=>c.payment==="振込").reduce((s,c)=>s+c.amount,0);
+  // 🔍 重複の疑い：案件名と日付が同じ行が2つ以上ある
+  const dupIds=useMemo(()=>{
+    const m={};
+    filtered.forEach(c=>{const k=c.name+"|"+c.date;(m[k]=m[k]||[]).push(c.id);});
+    const set=new Set();
+    Object.values(m).forEach(ids=>{if(ids.length>1)ids.forEach(i=>set.add(i));});
+    return set;
+  },[filtered]);
+  const dupExtra=useMemo(()=>{
+    const m={};
+    filtered.forEach(c=>{const k=c.name+"|"+c.date;(m[k]=m[k]||[]).push(c);});
+    return Object.values(m).filter(a=>a.length>1).reduce((s,a)=>s+a.slice(1).reduce((x,c)=>x+c.amount,0),0);
+  },[filtered]);
 
   const selectCustomerForCase=name=>{
     const c=(customers||[]).find(cu=>cu.name===name);
@@ -1298,6 +1339,10 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
 
   return <div style={{animation:"fadeUp .3s ease"}}>
     <div style={S.pills}><Pill label="合計" val={yen(total)} red/><Pill label="💴現金" val={yen(cashT)}/><Pill label="🏦振込" val={yen(xferT)}/></div>
+    {dupIds.size>0&&<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:12,padding:"10px 14px",marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#9a3412"}}>⚠ 重複の疑いが {dupIds.size}行 あります</div>
+      <div style={{fontSize:11,color:"#c2410c",marginTop:2}}>案件名と日付が同じ行にオレンジの「重複?」が付いています。間違っている方を ✕ で消してください。重複分の金額は最大 {yen(dupExtra)} です。</div>
+    </div>}
 
     <div style={{...S.card,marginBottom:12}}>
       <div style={S.sTitle}>🏢 顧客別集計（{month}）</div>
@@ -1352,9 +1397,9 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
           <th style={{textAlign:"right",width:62}}>金額</th>
           <th style={{width:40}}></th>
         </tr></thead>
-        <tbody>{filtered.map(c=><tr key={c.id}>
+        <tbody>{filtered.map(c=><tr key={c.id} style={dupIds.has(c.id)?{background:"#fff7ed"}:undefined}>
           <td style={{fontSize:9,letterSpacing:"-0.5px",padding:"7px 2px"}}>{c.date.slice(5).replace("-","/")}</td>
-          <td style={{textAlign:"left",wordBreak:"break-all",fontSize:11,padding:"7px 4px"}}>{c.name}</td>
+          <td style={{textAlign:"left",wordBreak:"break-all",fontSize:11,padding:"7px 4px"}}>{dupIds.has(c.id)&&<span style={{background:"#fed7aa",color:"#9a3412",fontSize:9,borderRadius:4,padding:"1px 4px",marginRight:4,fontWeight:700}}>重複?</span>}{c.name}</td>
           <td style={{textAlign:"center",padding:"7px 2px"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:"50%",background:"#f5eeee",color:"#8b0000",fontSize:10,fontWeight:700}}>{c.staff?c.staff[0]:"?"}</span></td>
           <td style={{padding:"7px 2px"}}><span style={{...S.badge,...(c.payment==="現金"?S.bCash:S.bXfer),padding:"1px 5px",fontSize:10}}>{c.payment==="現金"?"現":"振"}</span></td>
           <td style={{textAlign:"right",fontWeight:700,color:"#2d6a4f",fontSize:11,padding:"7px 2px"}}>{yen(c.amount)}</td>
