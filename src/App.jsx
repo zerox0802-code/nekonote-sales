@@ -1340,8 +1340,10 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
   // 🔍 顧客別集計の合計 → 締めの月売上合計 までの差額の内訳
   const reconItems=useMemo(()=>{
     const items=[];
+    let aggSum=0,aggN=0;
     filtered.forEach(c=>{
       const inStaff=names.includes(c.staff);
+      if(inStaff&&!c.customerId){aggSum+=c.amount;aggN++;return;} // 顧客未連携だけの案件は1行にまとめる
       const eff=(inStaff?c.amount:0)-(c.customerId?c.amount:0);
       if(eff!==0){
         const notes=[];
@@ -1376,6 +1378,7 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
         items.push({key:"s"+p.id,label:`宿泊清掃：${p.name}`,eff,note:notes.join("／")});
       }
     });
+    if(aggN>0)items.push({key:"agg",label:`案件：顧客未連携の案件 ${aggN}件`,eff:aggSum,note:"締めには入るが顧客別集計には入らない（正常。依頼者を顧客に紐付ければ顧客別にも入る）"});
     return items;
   },[filtered,dailyProps,stayProps,month,cleanData,monthCntData,stayClean,stayExtra,staffList,getStayPropMonthTotal]);
   const reconSum=reconItems.reduce((s,v)=>s+v.eff,0);
@@ -1385,6 +1388,15 @@ function CasesTab({month,cases,staffList,saveCases,showToast,customers,dailyProp
     {dupIds.size>0&&<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:12,padding:"10px 14px",marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:"#9a3412"}}>⚠ 重複の疑いが {dupIds.size}行 あります</div>
       <div style={{fontSize:11,color:"#c2410c",marginTop:2}}>案件名と日付が同じ行にオレンジの「重複?」が付いています。間違っている方を ✕ で消してください。重複分の金額は最大 {yen(dupExtra)} です。</div>
+      <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+        {filtered.filter(c=>dupIds.has(c.id)).map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12}}>
+          <span style={{color:"#999",fontSize:10,whiteSpace:"nowrap"}}>{c.date.slice(5).replace("-","/")}</span>
+          <span style={{flex:1,minWidth:0,fontWeight:600,wordBreak:"break-all"}}>{c.name}</span>
+          <span style={{color:"#8b0000",fontWeight:700,whiteSpace:"nowrap"}}>{c.staff||"?"}</span>
+          <span style={{color:"#2d6a4f",fontWeight:700,whiteSpace:"nowrap"}}>{yen(c.amount)}</span>
+          <button onClick={()=>del(c.id)} style={{...S.iconBtn,color:"#e74c3c",fontSize:14}}>✕</button>
+        </div>)}
+      </div>
     </div>}
 
     <div style={{...S.card,marginBottom:12}}>
