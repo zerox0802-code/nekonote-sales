@@ -92,7 +92,7 @@ const DEFAULT_PROPS = [
   {id:20, name:"鞍山コーポ", fee:4000, cnt:2},
 ];
 const DEFAULT_STAY_PROPS = [];
-const DEFAULT_CFG = { fixedCost:125000, taxRate:3 };
+const DEFAULT_CFG = { fixedCost:125000, taxRate:3, consumptionTax:10 };
 const DEFAULT_INVOICE_CFG = {
   companyName:"", companyRep:"", companyPostal:"", companyAddress:"", companyPhone:"", companyEmail:"", registNo:"",
   bankName:"", bankBranch:"", accountType:"普通", accountNo:"", accountHolder:"",
@@ -402,10 +402,10 @@ export default function App(){
         {tab==="cases"&&<CasesTab month={month} cases={cases} staffList={staffList} saveCases={saveCases} showToast={showToast} customers={customers} dailyProps={props} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cleanData={cleanData} monthCntData={monthCntData}/>}
         {tab==="jobs"&&<JobsTab jobs={jobs} saveJobs={saveJobs} customers={customers} saveCustomers={saveCustomers} staffList={staffList} completeJob={completeJob} revertCompletion={revertCompletion} syncCompletedCase={syncCompletedCase} showToast={showToast} stayProps={stayProps} gcalCfg={gcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar}/>}
         {tab==="future"&&<FutureTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
-        {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast}/>}
+        {tab==="estimate"&&<EstimateTab jobs={jobs} saveJobs={saveJobs} staffList={staffList} setTab={setTab} showToast={showToast} consumptionTax={cfg.consumptionTax??10}/>}
         {tab==="customers"&&<CustomersTab customers={customers} saveCustomers={saveCustomers} jobs={jobs} showToast={showToast}/>}
         {tab==="closing"&&<ClosingTab month={month} props={props} staffList={staffList} cleanData={cleanData} monthCntData={monthCntData} stayProps={stayProps} stayClean={stayClean} stayExtra={stayExtra} cases={cases} cfg={cfg} saveCfg={saveCfg} showToast={showToast}/>}
-        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} stayProps={stayProps} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast}/>}
+        {tab==="invoice"&&<InvoiceTab jobs={jobs} customers={customers} dailyProps={props} stayProps={stayProps} invoiceCfg={invoiceCfg} invoices={invoices} saveInvoices={saveInvoices} showToast={showToast} consumptionTax={cfg.consumptionTax??10}/>}
         {tab==="cfg"&&<CfgTab props={props} saveProps={saveProps} staffList={staffList} saveStaff={saveStaff} cfg={cfg} saveCfg={saveCfg} password={password} savePassword={savePassword} stayProps={stayProps} saveStayProps={saveStayProps} invoiceCfg={invoiceCfg} saveInvoiceCfg={saveInvoiceCfg} showToast={showToast} customers={customers} gcalCfg={gcalCfg} saveGcalCfg={saveGcalCfg} gcalToken={gcalToken} connectGoogleCalendar={connectGoogleCalendar} disconnectGoogleCalendar={disconnectGoogleCalendar}/>}
       </>}
     </div>
@@ -1574,7 +1574,7 @@ function ClosingTab({month,props,staffList,cleanData,monthCntData,stayProps,stay
 // ══════════════════════════════════════════
 // 🧾 請求書タブ
 // ══════════════════════════════════════════
-function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,saveInvoices,showToast}){
+function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,saveInvoices,showToast,consumptionTax=10}){
   const ic=invoiceCfg||DEFAULT_INVOICE_CFG;
   const [currentId,setCurrentId]=useState(null);
   const [client,setClient]=useState("");
@@ -1588,7 +1588,7 @@ function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,sav
   const [showPicker,setShowPicker]=useState(false);
   const [pickerTab,setPickerTab]=useState("jobs");
   const [showList,setShowList]=useState(false);
-  const [taxRate,setTaxRate]=useState(10);
+  const [taxRate,setTaxRate]=useState(consumptionTax);
   const [invoiceNo,setInvoiceNo]=useState("INV-"+toDay().replace(/-/g,""));
 
   const addLine=()=>setLines([...lines,{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);
@@ -1683,7 +1683,7 @@ function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,sav
     setDueDate(inv.dueDate||"");
     setNote(inv.note||"");
     setLines(inv.lines&&inv.lines.length?inv.lines:[{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);
-    setTaxRate(inv.taxRate??10);
+    setTaxRate(inv.taxRate??consumptionTax);
     setShowList(false);
     showToast(`📂 ${inv.client}様の請求書を読み込みました`);
   };
@@ -1708,7 +1708,7 @@ function InvoiceTab({jobs,customers,dailyProps,stayProps,invoiceCfg,invoices,sav
     setInvoiceNo("INV-"+toDay().replace(/-/g,""));
     setClient("");setClientAddress("");setSubject("");setHonorific("御中");
     setIssueDate(toDay());setDueDate("");setNote("");
-    setLines([{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);setTaxRate(10);
+    setLines([{id:Date.now(),desc:"",qty:1,unit:"式",unitPrice:0}]);setTaxRate(consumptionTax);
     showToast("📝 新規作成モードにしました");
   };
 
@@ -2119,6 +2119,8 @@ function CfgTab({props,saveProps,staffList,saveStaff,cfg,saveCfg,password,savePa
       <div style={S.sTitle}>⚙️ 固定設定</div>
       <FR label="固定費（円）"><NumInput value={lCfg.fixedCost} onCommit={v=>setLCfg({...lCfg,fixedCost:v})} style={{width:140}}/></FR>
       <FR label="税貯金率（%）"><NumInput value={lCfg.taxRate} onCommit={v=>setLCfg({...lCfg,taxRate:v})} style={{width:100}}/></FR>
+      <FR label="消費税率（%）"><NumInput value={lCfg.consumptionTax??10} onCommit={v=>setLCfg({...lCfg,consumptionTax:v})} style={{width:100}}/></FR>
+      <p style={{fontSize:10,color:"#bbb",marginTop:-4}}>見積タブの税込・税抜表示と、請求書の初期の税率に使われます。変更したら下の「すべて保存」を押してください。</p>
     </div>
     <button style={S.saveBtn} onClick={saveAll}>💾 すべて保存</button>
     <PwCard password={password} savePassword={savePassword} showToast={showToast}/>
@@ -2264,23 +2266,15 @@ const PRICE_DATA = {
     options:[
       {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
       {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
+      {key:"material", label:"薬剤資材費（1,650円〜）", price:1650, perUnit:true, unitLabel:"回"},
+      {key:"spray", label:"薬剤散布費（3,300円〜）", price:3300, perUnit:true, unitLabel:"回"},
       {key:"disposal", label:"処分費（不用品回収・草刈り等）", price:15, perUnit:true, unitLabel:"kg", step:10, input:true},
-    ]
-  },
-  pesticide: {
-    label:"🪲 薬剤散布（ゴキブリ等）",
-    items:[],
-    options:[
-      {key:"tech", label:"技術料", price:3300},
-      {key:"material", label:"資材費", price:3300},
-      {key:"travel", label:"出張費（1名あたり）", price:2200, perUnit:true, unitLabel:"名"},
-      {key:"travel_far", label:"遠方出張費（移動時間・15分ごと）", price:550, perUnit:true, unitLabel:"15分"},
     ]
   },
 };
 
 const makeWorker=()=>({id:Date.now()+Math.random(),name:"",hours:""});
-function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
+function EstimateTab({jobs,saveJobs,staffList,setTab,showToast,consumptionTax=10}){
   const names = stNames(staffList);
   const [category,setCategory]=useState("house");
   const [selectedItem,setSelectedItem]=useState(null);
@@ -2309,7 +2303,9 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
     if(!opt||!cnt)return sum;
     return sum+(opt.perUnit?opt.price*cnt:opt.price);
   },0);
-  const grandTotal = basePrice+optTotal+workersTotal;
+  const grandTotal = basePrice+optTotal+workersTotal; // 税込
+  const totalExTax = Math.round(grandTotal/(1+consumptionTax/100)); // 税抜（逆算）
+  const taxPart = grandTotal-totalExTax;
 
   const setOptCount=(key,delta)=>{
     setOptionCounts(prev=>{
@@ -2335,7 +2331,7 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
       if(!cnt)return;
       lines.push(`  ${o.label}${o.perUnit?` ×${cnt}${o.unitLabel==="kg"?"kg":""}`:""}：${yen(o.perUnit?o.price*cnt:o.price)}`);
     });
-    lines.push(`  合計：${yen(grandTotal)}`);
+    lines.push(`  合計（税込）：${yen(grandTotal)}／税抜：${yen(totalExTax)}`);
     if(memo)lines.push(`  メモ：${memo}`);
     const nj={
       id:Date.now(),client,content:lines[0],
@@ -2429,9 +2425,11 @@ function EstimateTab({jobs,saveJobs,staffList,setTab,showToast}){
 
     <div style={{...S.card,marginBottom:12,background:"linear-gradient(135deg,#f0fdf4,#dcfce7)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontWeight:700,fontSize:15,color:"#166534"}}>見積合計</span>
+        <span style={{fontWeight:700,fontSize:15,color:"#166534"}}>見積合計（税込）</span>
         <span style={{fontWeight:700,fontSize:24,color:"#166534"}}>{yen(grandTotal)}</span>
       </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:12,color:"#166534"}}><span>税抜金額</span><b>{yen(totalExTax)}</b></div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:2,fontSize:12,color:"#166534"}}><span>消費税（{consumptionTax}%）</span><b>{yen(taxPart)}</b></div>
       {grandTotal>0&&<div style={{marginTop:8,fontSize:11,color:"#4ade80"}}>
         {selectedItem&&<div>{selectedItem.label}：{yen(selectedItem.price||0)}</div>}
         {cat.workers&&workers.map((w,i)=>Number(w.hours)>0&&<div key={w.id}>{workerLabel(w,i)}：{Number(w.hours)}時間 {yen(workerAmt(w))}</div>)}
